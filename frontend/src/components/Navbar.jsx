@@ -6,6 +6,7 @@ export default function Navbar() {
     const navItems = [
         { path: '/', label: 'Project Info' },
         { path: '/csv-analysis', label: 'CSV Analysis' },
+        { path: '/csv-cleaning', label: 'CSV Cleaning' },
         { path: '/get-started', label: 'Get Started' },
     ];
 

@@ -40,8 +40,11 @@ export default function Home() {
                         <div className="bg-white p-8 rounded-lg shadow-lg hover:shadow-xl transition duration-300 transform hover:-translate-y-1 border border-gray-200">
                             <h3 className="text-2xl font-semibold text-gray-800 mb-4">Automated Data Cleaning</h3>
                             <p className="text-gray-600 mb-4">
-                                Say goodbye to manual data preparation. Our platform automatically handles missing values and ensures numerical columns are correctly formatted. Get a clear overview of your cleaned dataset's shape (rows and columns) in the results.
+                                Say goodbye to manual data preparation. Our platform automatically handles missing values by removing rows with null values. You can download the cleaned dataset for further analysis or use it directly in your workflows.
                             </p>
+                            <a href="/csv-cleaning" className="text-blue-600 hover:text-blue-700 font-semibold">
+                                Try CSV Cleaning →
+                            </a>
                         </div>
 
                         {/* Feature Card 3: Causal Analysis */}

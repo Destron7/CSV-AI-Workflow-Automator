@@ -7,7 +7,6 @@ export const GetStarted = () => {
 
     // State for workflow configuration
     const [workflowTasks, setWorkflowTasks] = React.useState({
-        cleanData: true, // Default to true as per project
         causalAnalysis: false,
         forecasting: false, // Week 3 stretch goal, disabled for now
         simulation: false,  // Week 3 stretch goal, disabled for now
@@ -170,16 +169,7 @@ export const GetStarted = () => {
                     <div className="p-6 border border-gray-200 rounded-lg bg-gray-50 shadow-sm">
                         <h2 className="text-2xl font-semibold text-gray-800 mb-4">2. Configure Workflow Tasks</h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <label className="flex items-center p-3 bg-white rounded-md shadow-sm cursor-pointer hover:bg-gray-100 transition duration-150">
-                                <input
-                                    type="checkbox"
-                                    name="cleanData"
-                                    checked={workflowTasks.cleanData}
-                                    onChange={handleWorkflowChange}
-                                    className="form-checkbox h-5 w-5 text-blue-600 rounded focus:ring-blue-500"
-                                />
-                                <span className="ml-3 text-gray-800 font-medium">Clean Data</span>
-                            </label>
+                            {/* Clean Data option removed as requested */}
                             <label className="flex items-center p-3 bg-white rounded-md shadow-sm cursor-pointer hover:bg-gray-100 transition duration-150">
                                 <input
                                     type="checkbox"

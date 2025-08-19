@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 
 export default function CsvAnalysis() {
+    const navigate = useNavigate();
     const [selectedFile, setSelectedFile] = useState(null);
     // State to store the metadata and preview data from the backend
     const [csvMetadata, setCsvMetadata] = useState(null);
@@ -115,6 +117,19 @@ export default function CsvAnalysis() {
         if (fileInput) fileInput.value = '';
     };
 
+    // Function to navigate to CSV Cleaning page
+    const handleGoToCleaning = () => {
+        if (selectedFile) {
+            // Store the file in sessionStorage to pass it to the CsvCleaning component
+            sessionStorage.setItem('csvFileName', selectedFile.name);
+            // Navigate to the cleaning page
+            navigate('/csv-cleaning');
+        } else {
+            setMessage('Error: Please select a CSV file first.');
+            setIsError(true);
+        }
+    };
+
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8">
             <div className="bg-white p-6 sm:p-8 rounded-xl shadow-2xl w-full max-w-3xl border border-gray-200">
@@ -166,6 +181,15 @@ export default function CsvAnalysis() {
                             className="w-full sm:w-auto flex justify-center items-center py-3 px-6 border border-gray-300 rounded-lg shadow-md text-lg font-semibold text-gray-700 bg-white hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition duration-300 ease-in-out transform hover:scale-105"
                         >
                             Reset
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => navigate('/csv-cleaning')}
+                            disabled={!csvMetadata} // Only enabled when CSV data is loaded
+                            className="w-full sm:w-auto flex justify-center items-center py-3 px-6 border border-transparent rounded-lg shadow-md text-lg font-semibold text-white bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-300 ease-in-out transform hover:scale-105
+                                       disabled:opacity-50 disabled:cursor-not-allowed disabled:from-gray-400 disabled:to-gray-500"
+                        >
+                            Clean CSV
                         </button>
                     </div>
                 </form>

@@ -94,7 +94,7 @@ export default function CsvCleaning() {
 
         if (file) {
             if (file.type === 'text/csv') {
-                setMessage(`File selected: ${file.name}. Click 'Clean CSV' to remove rows with null values.`);
+                setMessage(`File selected: ${file.name}. Click 'Clean CSV' to remove null values and duplicate rows.`);
                 setIsError(false);
             } else {
                 setSelectedFile(null);
@@ -109,7 +109,7 @@ export default function CsvCleaning() {
         }
     };
 
-    // Function to handle cleaning CSV (removing null rows)
+    // Function to handle cleaning CSV (removing null rows and duplicates)
     const handleCleanCsv = async (event) => {
         event.preventDefault();
         setMessage('');
@@ -134,6 +134,8 @@ export default function CsvCleaning() {
 
         const formData = new FormData();
         formData.append('file', selectedFile);
+        // Add parameter to indicate we want to remove duplicates as well
+        formData.append('remove_duplicates', 'true');
 
         try {
             // Using axios to send request to FastAPI backend for cleaning
@@ -146,42 +148,22 @@ export default function CsvCleaning() {
             const data = response.data;
             console.log('CSV Cleaning response data:', data);
 
-            // Check for null_data field
-            if (data.rows_removed > 0) {
-                console.log('Rows removed:', data.rows_removed);
-                console.log('null_data field exists:', Boolean(data.null_data));
-                if (data.null_data) {
-                    console.log('sample_removed_rows exists:', Boolean(data.null_data.sample_removed_rows));
-                    console.log('sample_removed_rows length:', data.null_data.sample_removed_rows?.length);
-                }
-            }
-
-            // Debug type conversions
-            console.log('Type conversions:', data.type_conversions);
-            console.log('Conversion details exist:', Boolean(data.type_conversions?.conversion_details));
-            console.log('Conversion details:', data.type_conversions?.conversion_details);
-            console.log('Conversion details keys:', data.type_conversions?.conversion_details ? Object.keys(data.type_conversions.conversion_details) : 'none');
-
+            // Update the UI with the result
             setCleaningResult(data);
 
-            // Build success message based on what was actually done
-            const hasNumericConversions = data.type_conversions && data.type_conversions.numeric_columns && data.type_conversions.numeric_columns.length > 0;
-
-            if (data.rows_removed === 0 && !hasNumericConversions) {
-                setMessage('Your CSV file is already clean! No changes were needed.');
+            // Create appropriate message based on what was cleaned
+            let resultMessage = '';
+            if (data.null_rows_removed > 0 && data.duplicate_rows_removed > 0) {
+                resultMessage = `Success! Removed ${data.null_rows_removed.toLocaleString()} rows with null values and ${data.duplicate_rows_removed.toLocaleString()} duplicate rows.`;
+            } else if (data.null_rows_removed > 0) {
+                resultMessage = `Success! Removed ${data.null_rows_removed.toLocaleString()} rows with null values.`;
+            } else if (data.duplicate_rows_removed > 0) {
+                resultMessage = `Success! Removed ${data.duplicate_rows_removed.toLocaleString()} duplicate rows.`;
             } else {
-                const messages = [];
-                if (data.rows_removed > 0) {
-                    messages.push(`Removed ${data.rows_removed} rows with null values.`);
-                }
-                if (hasNumericConversions) {
-                    messages.push(`Converted ${data.type_conversions.numeric_columns.length} column(s) to proper numeric format.`);
-                }
-
-                setMessage(`CSV file processed successfully! ${messages.join(' ')}`);
+                resultMessage = 'Success! Your data is already clean. No rows needed to be removed.';
             }
 
-            setIsError(false);
+            setMessage(resultMessage);
             console.log('CSV Cleaning response:', data);
         } catch (error) {
             const errorMessage = error.response?.data?.detail || error.message || 'An unknown error occurred.';
@@ -194,7 +176,7 @@ export default function CsvCleaning() {
         }
     };
 
-    // Function to download cleaned CSV
+    // Function to download cleaned CSV (with nulls and duplicates removed)
     const handleDownloadCleanedCsv = async () => {
         if (!selectedFile) {
             setMessage('Error: No CSV file selected for cleaning.');
@@ -206,6 +188,7 @@ export default function CsvCleaning() {
 
         const formData = new FormData();
         formData.append('file', selectedFile);
+        formData.append('remove_duplicates', 'true'); // Add parameter to indicate we want to remove duplicates
 
         try {
             // Using axios to send request to FastAPI backend for downloading cleaned CSV
@@ -263,7 +246,7 @@ export default function CsvCleaning() {
                     CSV File Cleaner
                 </h1>
                 <p className="text-base sm:text-lg text-center text-gray-600 mb-8 sm:mb-10">
-                    Upload your CSV file to remove rows with null values.
+                    Upload your CSV file to clean by removing rows with null values and duplicate rows.
                 </p>
 
                 <form onSubmit={handleCleanCsv} className="space-y-6 sm:space-y-8">
@@ -298,7 +281,7 @@ export default function CsvCleaning() {
                             {isLoading ? (
                                 <svg className="animate-spin h-6 w-6 mr-3 border-4 border-t-4 border-gray-200 rounded-full" viewBox="0 0 24 24"></svg>
                             ) : (
-                                "Clean CSV"
+                                "Clean CSV (Remove Nulls & Duplicates)"
                             )}
                         </button>
 
@@ -377,6 +360,16 @@ export default function CsvCleaning() {
                                 <p><span className="font-semibold">Cleaned Rows:</span> {cleaningResult.cleaned_rows.toLocaleString()}</p>
                                 <p><span className="font-semibold">Rows Removed:</span> {cleaningResult.rows_removed.toLocaleString()} ({cleaningResult.removal_percentage}%)</p>
                                 <p className="col-span-full"><span className="font-semibold">{cleaningResult.rows_removed === 0 && !cleaningResult.type_conversions?.numeric_columns?.length ? 'Analysis Result:' : 'Cleaning Operations:'}</span> {cleaningResult.cleaning_summary}</p>
+
+                                {/* Display duplicate rows information if available */}
+                                {cleaningResult.duplicate_rows_removed > 0 && (
+                                    <div className="col-span-full mt-4 pt-4 border-t border-blue-200">
+                                        <h5 className="text-lg font-medium text-blue-800 mb-2">Duplicate Rows Removed:</h5>
+                                        <p className="text-sm text-gray-700">
+                                            <span className="font-medium">{cleaningResult.duplicate_rows_removed.toLocaleString()}</span> duplicate {cleaningResult.duplicate_rows_removed === 1 ? 'row was' : 'rows were'} detected and removed from the dataset.
+                                        </p>
+                                    </div>
+                                )}
 
                                 {/* Display column type conversions if any occurred */}
                                 {cleaningResult.type_conversions &&

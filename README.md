@@ -1,169 +1,149 @@
 # CSV AI Workflow Automator
 
-A comprehensive solution for AI-powered CSV data analysis, cleaning, and workflow automation. This project consists of a FastAPI backend for data processing and a React frontend for user interaction.
+A full-stack solution for AI-powered CSV data analysis, cleaning, and workflow automation. The backend (FastAPI) handles CSV processing and analytics, while the frontend (React) delivers an intuitive UI for uploads, cleaning actions, and visualizations.
 
 ![CSV AI Workflow Automator](./frontend/public/logo192.png)
 
-## Project Overview
+## Overview
 
-The CSV AI Workflow Automator is designed to streamline the process of analyzing, cleaning, and visualizing CSV data. The application provides an intuitive interface for uploading CSV files, performing data quality checks, cleaning data, and visualizing insights.
+This application streamlines CSV preparation by detecting data quality issues, cleaning rows (nulls and duplicates), converting types, and visualizing results. It also lets you inspect rows removed during cleaning.
 
-### Key Features
+## Features
 
-- **CSV Analysis**: Detailed statistical analysis of CSV files including data types, missing values, and outliers
-- **Data Cleaning**: Automated cleaning of CSV data with options for handling null values and type conversion
-- **Data Visualization**: Interactive charts and graphs for data quality assessment and insights
-- **Type Conversion**: Intelligent conversion of string columns to appropriate numeric types when possible
-- **Removed Rows View**: Ability to view and analyze rows removed during the cleaning process
-- **Workflow Automation**: Streamlined workflow for data preparation and analysis
+- CSV Analysis: data types, null counts, basic stats, and preview
+- Cleaning: remove rows with nulls, remove duplicate rows, optional type conversion
+- Type Conversion: convert string-like numbers to numeric where possible
+- Visualizations: data quality, nulls per column, type conversion success
+- Removed Rows: dedicated view to inspect rows removed during cleaning
 
 ## Project Structure
 
 ```
 CSV AI Workflow/
-├── backend/               # FastAPI backend
+├── backend/                 # FastAPI backend
 │   ├── app/
-│   │   ├── api/           # API endpoints
-│   │   ├── core/          # Core data processing logic
-│   │   ├── models/        # Data models
-│   │   ├── services/      # Business logic services
-│   │   └── utils/         # Utility functions
+│   │   ├── main.py          # FastAPI app initialization
+│   │   ├── config.py        # Settings
+│   │   ├── api/
+│   │   │   ├── api_v1.py    # API router aggregation
+│   │   │   └── endpoints/
+│   │   │       ├── csv_analysis.py
+│   │   │       ├── csv_cleaning.py
+│   │   │       └── health.py
+│   │   ├── core/            # Processing utilities
+│   │   │   ├── csv_processor.py
+│   │   │   ├── data_cleaner.py
+│   │   │   └── exceptions.py
+│   │   ├── models/          # Pydantic models
+│   │   ├── services/        # Business logic
+│   │   └── utils/           # Helpers
 │   ├── requirements.txt
-│   └── run.py             # Entry point script
-├── frontend/              # React frontend
+│   └── run.py               # Dev entry point
+├── frontend/                # React frontend
 │   ├── public/
 │   ├── src/
-│   │   ├── components/    # React components
-│   │   │   └── charts/    # Visualization components
+│   │   ├── components/
+│   │   │   └── charts/
 │   │   ├── App.js
 │   │   └── index.js
 │   └── package.json
 └── README.md
 ```
 
-## Technology Stack
+## Tech Stack
+
+- Backend: FastAPI, Python 3.10+, Pandas, NumPy
+- Frontend: React 19.1.0, React Router DOM 7.7.0, Recharts 3.1.2, Axios
+
+## Setup
 
 ### Backend
 
-- **FastAPI**: High-performance API framework
-- **Pandas**: Data manipulation and analysis
-- **NumPy**: Numerical computing
-- **Python 3.10+**: Programming language
-
-### Frontend
-
-- **React 19.1.0**: UI library
-- **React Router DOM 7.7.0**: Routing
-- **Recharts 3.1.2**: Data visualization
-- **Axios**: HTTP client for API requests
-
-## Installation
-
-### Backend Setup
-
-1. Navigate to the backend directory:
-
 ```bash
 cd backend
-```
-
-2. Create a virtual environment:
-
-```bash
 python -m venv .venv
-# On Windows:
+# Windows
 .venv\Scripts\Activate.ps1
-# On Unix/MacOS:
-source .venv/bin/activate
-```
-
-3. Install dependencies:
-
-```bash
+# macOS/Linux
+# source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Frontend Setup
-
-1. Navigate to the frontend directory:
+Optionally copy env file:
 
 ```bash
-cd frontend
+cp .env.example .env
 ```
 
-2. Install dependencies:
+Start backend (dev):
 
 ```bash
-npm install
-```
-
-## Running the Application
-
-### Start the Backend Server
-
-```bash
-cd backend
 python run.py
 ```
 
-The backend server will start on http://localhost:8000 with API documentation available at http://localhost:8000/docs
+Docs: http://localhost:8000/docs
 
-### Start the Frontend Development Server
+Start backend (prod-style):
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+### Frontend
 
 ```bash
 cd frontend
+npm install
 npm start
 ```
 
-The frontend development server will start on http://localhost:3000
+App (frontend): http://localhost:3000
 
-## Usage Guide
+## Usage
 
-1. **Home Page**: Navigate to the application home page
-2. **Upload CSV**: Upload a CSV file for analysis
-3. **Analysis**: View comprehensive analysis of the uploaded CSV
-4. **Cleaning**: Navigate to the cleaning page to handle data issues:
-   - View data quality visualization
-   - See null data distribution by column
-   - Review and apply type conversions
-   - Clean the data
-5. **View Removed Rows**: Analyze rows removed during cleaning
+1. Upload a CSV file
+2. Analyze to view schema, nulls, and preview
+3. Clean to remove null and duplicate rows; optional type conversion
+4. Download the cleaned CSV
+5. View Removed Rows to audit what was dropped
 
-## API Endpoints
+## API Endpoints (v1)
 
-### CSV Analysis
+- Health
+  - GET `/` (root)
+  - GET `/api/v1/health`
+- CSV Analysis
+  - POST `/api/v1/csv/analyse-csv/`
+- CSV Cleaning
+  - POST `/api/v1/csv/clean/remove-nulls/` (supports `remove_duplicates` flag)
+  - POST `/api/v1/csv/clean/remove-nulls/download/` (download cleaned CSV)
+  - POST `/api/v1/csv/removed-rows/` (returns removed rows dataset)
 
-- `POST /api/v1/csv/analyse-csv/`: CSV analysis with statistics and preview
+Notes:
 
-### CSV Cleaning
+- Cleaning response includes: original_rows, cleaned_rows, rows_removed, removal_percentage, null_rows_removed, duplicate_rows_removed, columns, cleaning_summary, type_conversions, and optional samples.
 
-- `POST /api/v1/csv/clean/`: Clean CSV data based on specified options
-- `GET /api/v1/csv/removed-rows/`: View rows removed during cleaning
-- `POST /api/v1/csv/convert-types/`: Convert column data types intelligently
+## Visualizations
 
-## Data Visualization Components
-
-The application includes several visualization components:
-
-- **Data Quality Pie Chart**: Displays the proportion of valid vs. null data
-- **Null Data Chart**: Shows null values distribution across columns
-- **Type Conversion Chart**: Visualizes the results of type conversions
+- Data Quality Pie: valid vs. invalid rows
+- Nulls per Column: bar chart
+- Type Conversion: success metrics by column
 
 ## Contributing
 
-1. Fork the repository
-2. Create a new branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+- Fork repo
+- Create feature branch: `git checkout -b feature/xyz`
+- Commit: `git commit -m "feat: add xyz"`
+- Push: `git push origin feature/xyz`
+- Open PR
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+MIT
 
 ## Acknowledgements
 
-- [FastAPI](https://fastapi.tiangolo.com/)
-- [React](https://reactjs.org/)
-- [Pandas](https://pandas.pydata.org/)
-- [Recharts](https://recharts.org/)
+- FastAPI
+- React
+- Pandas
+- Recharts

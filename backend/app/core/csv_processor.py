@@ -189,6 +189,61 @@ class CSVProcessor:
         return df_cleaned, cleaning_stats
 
     @staticmethod
+    def remove_duplicate_rows(df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+        """
+        Remove duplicate rows from the DataFrame
+
+        Args:
+            df: pandas DataFrame to clean
+
+        Returns:
+            Tuple of (cleaned_df, cleaning_stats)
+            - cleaned_df: DataFrame with duplicate rows removed
+            - cleaning_stats: Statistics about the cleaning operation
+        """
+        # Store original statistics
+        rows_before = len(df)
+
+        # Identify duplicate rows
+        duplicated_mask = df.duplicated(keep="first")
+        duplicate_indices = df[duplicated_mask].index.tolist()
+
+        # Extract sample of duplicate rows for preview (limit to 10)
+        sample_duplicate_rows = []
+        for idx in duplicate_indices[:10]:
+            row = df.loc[idx]
+            row_data = {}
+            for column in df.columns:
+                row_data[column] = (
+                    str(row[column]) if not pd.isna(row[column]) else None
+                )
+            sample_duplicate_rows.append({"row_index": int(idx), "data": row_data})
+
+        # Remove duplicates
+        df_cleaned = df.drop_duplicates(keep="first")
+
+        # Calculate cleaning stats
+        rows_after = len(df_cleaned)
+        rows_removed = rows_before - rows_after
+        removal_percentage = (
+            (rows_removed / rows_before * 100) if rows_before > 0 else 0
+        )
+
+        # Compile cleaning statistics
+        cleaning_stats = {
+            "rows_before": rows_before,
+            "rows_after": rows_after,
+            "rows_removed": rows_removed,
+            "removal_percentage": round(removal_percentage, 2),
+            "duplicate_rows_sample": sample_duplicate_rows,
+        }
+
+        logger.info(
+            f"Removed {rows_removed} duplicate rows ({round(removal_percentage, 2)}%)"
+        )
+        return df_cleaned, cleaning_stats
+
+    @staticmethod
     def identify_null_rows(df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, Any]]:
         """
         Identify rows containing any null values in the DataFrame without removing them

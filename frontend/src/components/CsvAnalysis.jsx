@@ -66,8 +66,8 @@ export default function CsvAnalysis() {
         formData.append('file', selectedFile);
 
         try {
-            // Using axios to send request to FastAPI backend at /analyse-csv/
-            const response = await axios.post('http://localhost:8000/analyse-csv/', formData, {
+            // Using axios to send request to FastAPI backend using the versioned API endpoint
+            const response = await axios.post('http://localhost:8000/api/v1/csv/analyse-csv/', formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
                 },

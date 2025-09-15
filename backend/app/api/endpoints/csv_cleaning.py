@@ -16,12 +16,15 @@ router = APIRouter()
 
 
 @router.post("/clean/remove-nulls/", response_model=dict)
-async def clean_csv_remove_nulls(file: UploadFile = File(...)):
+async def clean_csv_remove_nulls(
+    file: UploadFile = File(...), remove_duplicates: bool = True
+):
     """
-    Clean a CSV file by removing all rows containing null values
+    Clean a CSV file by removing all rows containing null values and optionally removing duplicate rows
 
     Args:
         file: Uploaded CSV file
+        remove_duplicates: Whether to remove duplicate rows (default: True)
 
     Returns:
         Dictionary containing:
@@ -32,15 +35,18 @@ async def clean_csv_remove_nulls(file: UploadFile = File(...)):
         - removal_percentage: Percentage of rows removed
         - columns: List of column names
         - cleaning_summary: Human-readable summary of cleaning operation
+        - duplicate_rows_sample: Sample of duplicate rows that were removed (if any)
     """
     try:
         cleaning_service = CleaningService()
 
-        # Process the cleaning request
-        cleaning_result = await cleaning_service.clean_csv_remove_nulls(file)
+        # Process the cleaning request with combined functionality
+        cleaning_result = await cleaning_service.clean_csv_combined(
+            file, remove_duplicates
+        )
 
         logger.info(
-            f"Successfully cleaned CSV file by removing null rows: {file.filename}"
+            f"Successfully cleaned CSV file (nulls and duplicates): {file.filename}"
         )
         return cleaning_result
 
@@ -53,12 +59,16 @@ async def clean_csv_remove_nulls(file: UploadFile = File(...)):
 
 
 @router.post("/clean/remove-nulls/download/")
-async def download_cleaned_csv(file: UploadFile = File(...)):
+async def download_cleaned_csv(
+    file: UploadFile = File(...), remove_duplicates: bool = True
+):
     """
-    Clean a CSV file by removing all rows containing null values and return it as a downloadable file
+    Clean a CSV file by removing all rows containing null values and optionally duplicate rows,
+    then return it as a downloadable file
 
     Args:
         file: Uploaded CSV file
+        remove_duplicates: Whether to remove duplicate rows (default: True)
 
     Returns:
         StreamingResponse with the cleaned CSV file for download
@@ -66,8 +76,10 @@ async def download_cleaned_csv(file: UploadFile = File(...)):
     try:
         cleaning_service = CleaningService()
 
-        # Generate cleaned CSV file as bytes
-        cleaned_csv_bytes = await cleaning_service.get_cleaned_csv_file(file)
+        # Generate cleaned CSV file as bytes using combined approach
+        cleaned_csv_bytes = await cleaning_service.get_combined_cleaned_csv_file(
+            file, remove_duplicates
+        )
 
         # Prepare for download
         return StreamingResponse(

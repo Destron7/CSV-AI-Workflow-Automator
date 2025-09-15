@@ -33,15 +33,11 @@ app.add_middleware(
 # Include API router
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
-# Legacy endpoints for backward compatibility
+# Legacy root endpoint for backward compatibility
 from .api.endpoints.health import root
-from .api.endpoints.csv_analysis import analyze_csv
 
 # Add legacy root endpoint
 app.add_api_route("/", root, methods=["GET"])
-
-# Add legacy CSV analysis endpoint
-app.add_api_route("/analyse-csv/", analyze_csv, methods=["POST"])
 
 
 @app.on_event("startup")

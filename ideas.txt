@@ -1,0 +1,47 @@
+# Removed Features Documentation
+
+The following features were removed from the project as per user request on 2026-02-10. This document serves as a record of the functionality, implementation details, and file locations to facilitate future restoration if needed.
+
+## 1. Causal Analysis
+
+**Description:**
+A module to perform causal inference using the `dowhy` library. It allowed users to estimate the effect of a treatment variable on an outcome variable, controlling for confounders. It included PC algorithm for causal graph discovery and various estimators (Linear Regression, Propensity Score Matching).
+
+**Frontend Components:**
+- **Entry Point:** `GetStarted.jsx` (Workflow selection, input configuration).
+- **Configuration:** `src/components/workflow/CausalConfig.jsx` (Treatment/Outcome selection, Alpha, Estimator settings).
+- **Visualization:** `src/components/workflow/FlowDAG.jsx` (DAG visualization of learned causal graph).
+- **Results:** Displayed in `GetStarted.jsx` (Effect Score, Causal Graph, Textual Summary).
+
+**Backend Services:**
+- **Endpoint:** `/api/v1/causal/analyze-auto/` (in `app/api/endpoints/causal.py`).
+- **Service Logic:** `app/services/causal_service.py`.
+    - Functions: `auto_causal_analysis`, `learn_structure_pc`, `estimate_causal_effect`.
+    - Dependencies: `dowhy`, `causal-learn`, `networkx`, `pandas`, `numpy`.
+
+**Key Logic:**
+- constructing a causal graph from data using PC algorithm.
+- Identifying backdoor paths.
+- Estimating effects using specified methods.
+- Refuting estimates (random common cause, placebo treatment).
+
+## 2. SARIMAX Forecasting
+
+**Description:**
+A time-series forecasting module using `statsmodels` SARIMAX (Seasonal AutoRegressive Integrated Moving Average with eXogenous regressors). It allowed users to forecast a target variable based on historical data and optional exogenous variables.
+
+**Frontend Components:**
+- **Entry Point:** `GetStarted.jsx` (Checkbox to enable forecasting, inputs for Date column, Outcome, Treatments, Steps).
+- **Results:** Displayed in `GetStarted.jsx` (Line chart with History, Forecast, and Confidence Intervals using `recharts`).
+
+**Backend Services:**
+- **Endpoint:** `/api/v1/forecast` (in `app/api/endpoints/forecast.py` and `main.py`).
+- **Service Logic:** `app/services/forecast_service.py`.
+    - Functions: `perform_forecast`.
+    - Dependencies: `statsmodels`, `pandas`.
+
+**Key Logic:**
+- Parsing date columns.
+- fitting a SARIMAX(1,1,1) model (hardcoded parameters in some versions).
+- Forecasting future steps.
+- Returning historical data, forecast values, and confidence intervals.

@@ -11,7 +11,6 @@ class WorkflowConfigRequest(BaseModel):
 
     clean_data: bool = True
     causal_analysis: bool = False
-    forecasting: bool = False
     simulation: bool = False
     output_type: str = "dashboard"  # "dashboard" or "report"
     treatment_column: Optional[str] = None

@@ -54,10 +54,7 @@ export const CausalConfig = ({
             />
             <span className="ml-3 text-gray-800 font-medium">Causal Analysis</span>
           </label>
-          <label className="flex items-center p-3 bg-white rounded-md shadow-sm opacity-60 cursor-not-allowed">
-            <input type="checkbox" name="forecasting" checked={workflowTasks.forecasting} onChange={onWorkflowChange} className="form-checkbox h-5 w-5 text-blue-600 rounded" disabled />
-            <span className="ml-3 text-gray-800">Forecasting <span className="text-xs text-gray-500">(Coming Soon)</span></span>
-          </label>
+          {/* Forecasting option removed */}
           <label className="flex items-center p-3 bg-white rounded-md shadow-sm opacity-60 cursor-not-allowed">
             <input type="checkbox" name="simulation" checked={workflowTasks.simulation} onChange={onWorkflowChange} className="form-checkbox h-5 w-5 text-blue-600 rounded" disabled />
             <span className="ml-3 text-gray-800">Simulation <span className="text-xs text-gray-500">(Coming Soon)</span></span>

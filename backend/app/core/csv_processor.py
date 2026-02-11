@@ -484,3 +484,46 @@ class CSVProcessor:
             f"Converted {len(conversions['numeric_columns'])} columns to numeric"
         )
         return df_converted, conversion_stats
+
+    @staticmethod
+    def get_correlation_matrix(df: pd.DataFrame) -> Dict[str, Any]:
+        """
+        Calculate correlation matrix for numeric columns
+        
+        Args:
+            df: pandas DataFrame
+            
+        Returns:
+            Dictionary containing correlation matrix data suitable for frontend
+        """
+        # Select only numeric columns
+        numeric_df = df.select_dtypes(include=[np.number])
+        
+        if numeric_df.empty or len(numeric_df.columns) < 2:
+            return None
+            
+        # Calculate correlation matrix
+        corr_matrix = numeric_df.corr().round(2)
+        
+        # Convert to format suitable for frontend (e.g. for heatmap)
+        # We need: x labels, y labels, and the data points
+        columns = corr_matrix.columns.tolist()
+        
+        # Format: list of objects { x: col1, y: col2, value: 0.8 }
+        data_points = []
+        for i, row_col in enumerate(columns):
+            for j, col_col in enumerate(columns):
+                val = corr_matrix.iloc[i, j]
+                # maintain NaN as None for JSON
+                if pd.isna(val):
+                    val = None
+                data_points.append({
+                    "x": row_col,
+                    "y": col_col,
+                    "value": val
+                })
+                
+        return {
+            "columns": columns,
+            "data": data_points
+        }

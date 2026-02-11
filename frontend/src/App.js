@@ -1,26 +1,36 @@
 import './App.css';
 import { Route, Routes } from 'react-router-dom';
-import Navbar from './components/Navbar';
-import Home from './components/Home';
-import CsvAnalysis from './components/CsvAnalysis';
-import CsvCleaning from './components/CsvCleaning';
-import { GetStarted } from './components/GetStarted';
-import NotFound404 from './components/NotFound404';
-import RemovedRowsView from './components/RemovedRowsView';
+import Navbar from './components/layout/Navbar';
+import Home from './pages/Home';
+import { Particles } from './components/ui/particles';
+import CsvAnalysis from './pages/CsvAnalysis';
+import CsvCleaning from './pages/CsvCleaning';
+
+import NotFound404 from './pages/NotFound404';
+import RemovedRowsView from './pages/RemovedRowsView';
 
 function App() {
   return (
-    <>
-      <Navbar />
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/csv-analysis" element={<CsvAnalysis />} />
-        <Route path="/csv-cleaning" element={<CsvCleaning />} />
-        <Route path="/removed-rows" element={<RemovedRowsView />} />
-        <Route path="/get-started" element={<GetStarted />} />
-        <Route path="*" element={<NotFound404 />} />
-      </Routes>
-    </>
+    <div className="relative min-h-screen w-full bg-black">
+      <Particles
+        className="absolute inset-0 z-0"
+        quantity={200}
+        ease={80}
+        color="#ffffff"
+        refresh
+      />
+      <div className="relative z-10">
+        <Navbar />
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/csv-analysis" element={<CsvAnalysis />} />
+          <Route path="/csv-cleaning" element={<CsvCleaning />} />
+          <Route path="/removed-rows" element={<RemovedRowsView />} />
+
+          <Route path="*" element={<NotFound404 />} />
+        </Routes>
+      </div>
+    </div>
   );
 }
 

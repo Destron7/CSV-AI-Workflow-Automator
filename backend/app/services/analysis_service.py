@@ -76,6 +76,7 @@ class AnalysisService:
                     for col in columns_info
                 ],
                 "preview_data": preview_data_detailed,
+                "correlation_matrix": self.csv_processor.get_correlation_matrix(df),
             }
 
             logger.info(f"Successfully analyzed CSV file: {file.filename}")

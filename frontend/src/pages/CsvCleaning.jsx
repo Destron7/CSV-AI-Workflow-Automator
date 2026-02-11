@@ -1,11 +1,25 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { DataQualityPieChart, TypeConversionChart, NullDataChart } from './charts';
+// import { useDispatch } from 'react-redux'; // Hook handles this
+// import { setCsvData } from '../store/csvSlice'; // Hook handles this
+import { DataQualityPieChart, TypeConversionChart, NullDataChart } from '../components/charts';
+import { useCsvSelection } from '../hooks/useCsvSelection';
+import { GlowingCard } from '../components/ui/glowing-card';
 
 export default function CsvCleaning() {
     const navigate = useNavigate();
-    const [selectedFile, setSelectedFile] = useState(null);
+    // const dispatch = useDispatch(); // Removed in favor of hook
+
+    const {
+        selectedFile,
+        handleFileUpload,
+        updateGlobalCsv,
+        clearGlobalCsv,
+        isProcessing: isParsingCsv
+    } = useCsvSelection();
+
+    // Local UI State
     const [cleaningResult, setCleaningResult] = useState(null);
     const [message, setMessage] = useState('');
     const [isError, setIsError] = useState(false);
@@ -87,25 +101,21 @@ export default function CsvCleaning() {
 
     const handleFileChange = (event) => {
         const file = event.target.files[0];
-        setSelectedFile(file);
+        // Use hook to parse and set Redux state. 
+        // Note: selectedFile will update via useEffect in the hook.
+        handleFileUpload(file);
+
         setMessage('');
         setIsError(false);
         setCleaningResult(null);
 
         if (file) {
-            if (file.type === 'text/csv') {
+            if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
                 setMessage(`File selected: ${file.name}. Click 'Clean CSV' to remove null values and duplicate rows.`);
-                setIsError(false);
             } else {
-                setSelectedFile(null);
                 setMessage('Error: Please select a valid CSV file (.csv extension).');
                 setIsError(true);
-                // Reset file input element if invalid file
-                const fileInput = document.getElementById('csvFileToClean');
-                if (fileInput) fileInput.value = '';
             }
-        } else {
-            setMessage(''); // Clear message if no file is selected
         }
     };
 
@@ -150,6 +160,20 @@ export default function CsvCleaning() {
 
             // Update the UI with the result
             setCleaningResult(data);
+
+            // Update the global state with the CLEANED data
+            if (data.cleaned_data && data.columns) {
+                updateGlobalCsv(
+                    data.cleaned_data,
+                    data.columns,
+                    selectedFile.name, // Keep original filename or append 'cleaned'? User said "replace that with the current value"
+                    {
+                        original_rows: data.original_rows,
+                        cleaned_rows: data.cleaned_rows,
+                        rows_removed: data.rows_removed
+                    }
+                );
+            }
 
             // Create appropriate message based on what was cleaned
             let resultMessage = '';
@@ -228,9 +252,14 @@ export default function CsvCleaning() {
         }
     };
 
+    // Function to navigate to Analysis page
+    const handleAnalyzeData = () => {
+        navigate('/csv-analysis');
+    };
+
     // Function to reset all states
     const handleReset = () => {
-        setSelectedFile(null);
+        clearGlobalCsv();
         setCleaningResult(null);
         setMessage('');
         setIsError(false);
@@ -240,20 +269,20 @@ export default function CsvCleaning() {
     };
 
     return (
-        <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8">
-            <div className="bg-white p-6 sm:p-8 rounded-xl shadow-2xl w-full max-w-3xl border border-gray-200">
-                <h1 className="text-3xl sm:text-4xl font-extrabold text-center text-gray-900 mb-6 sm:mb-8">
+        <div className="min-h-screen bg-transparent flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8 pt-24 text-foreground">
+            <div className="bg-card p-6 sm:p-8 rounded-xl shadow-2xl w-full max-w-6xl border border-border/40">
+                <h1 className="text-3xl sm:text-4xl font-extrabold text-center text-foreground mb-6 sm:mb-8">
                     CSV File Cleaner
                 </h1>
-                <p className="text-base sm:text-lg text-center text-gray-600 mb-8 sm:mb-10">
+                <p className="text-base sm:text-lg text-center text-muted-foreground mb-8 sm:mb-10">
                     Upload your CSV file to clean by removing rows with null values and duplicate rows.
                 </p>
 
                 <form onSubmit={handleCleanCsv} className="space-y-6 sm:space-y-8">
                     {/* CSV File Upload Section */}
-                    <div className="p-5 sm:p-6 border border-gray-200 rounded-lg bg-gray-50 shadow-sm">
-                        <h2 className="text-xl sm:text-2xl font-semibold text-gray-800 mb-4">Upload Your CSV File</h2>
-                        <label htmlFor="csvFileToClean" className="block text-base sm:text-lg font-medium text-gray-700 mb-2">
+                    <div className="p-5 sm:p-6 border border-border/40 rounded-lg bg-muted/20 shadow-sm">
+                        <h2 className="text-xl sm:text-2xl font-semibold text-foreground mb-4">Upload Your CSV File</h2>
+                        <label htmlFor="csvFileToClean" className="block text-base sm:text-lg font-medium text-muted-foreground mb-2">
                             Select a CSV File:
                         </label>
                         <input
@@ -261,25 +290,30 @@ export default function CsvCleaning() {
                             id="csvFileToClean"
                             accept=".csv"
                             onChange={handleFileChange}
-                            className="block w-full text-sm text-gray-500
+                            className="block w-full text-sm text-foreground
                                        file:mr-4 file:py-2 file:px-4
                                        file:rounded-full file:border-0
                                        file:text-sm file:font-semibold
-                                       file:bg-blue-100 file:text-blue-700
-                                       hover:file:bg-blue-200 cursor-pointer transition duration-200"
+                                       file:bg-foreground file:text-background
+                                       hover:file:bg-foreground/90 cursor-pointer transition duration-200"
                         />
+                        {selectedFile && (
+                            <p className="mt-3 text-sm text-muted-foreground">
+                                File selected: <span className="font-medium text-foreground">{selectedFile.name}</span>
+                            </p>
+                        )}
                     </div>
 
                     {/* Action Buttons */}
                     <div className="flex flex-col sm:flex-row justify-center gap-4">
                         <button
                             type="submit"
-                            disabled={isLoading || isDownloading}
-                            className="w-full sm:w-auto flex justify-center items-center py-3 px-6 border border-transparent rounded-lg shadow-md text-lg font-semibold text-white bg-gradient-to-r from-green-600 to-blue-700 hover:from-green-700 hover:to-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-300 ease-in-out transform hover:scale-105
-                                       disabled:opacity-50 disabled:cursor-not-allowed disabled:from-gray-400 disabled:to-gray-500"
+                            disabled={isLoading || isDownloading || isParsingCsv}
+                            className="w-full sm:w-auto flex justify-center items-center py-3 px-6 border border-transparent rounded-lg shadow-md text-lg font-semibold text-black bg-white hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-white transition duration-300 ease-in-out transform hover:scale-105
+                                       disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-600"
                         >
                             {isLoading ? (
-                                <svg className="animate-spin h-6 w-6 mr-3 border-4 border-t-4 border-gray-200 rounded-full" viewBox="0 0 24 24"></svg>
+                                <svg className="animate-spin h-6 w-6 mr-3 border-4 border-t-4 border-gray-500 rounded-full" viewBox="0 0 24 24"></svg>
                             ) : (
                                 "Clean CSV (Remove Nulls & Duplicates)"
                             )}
@@ -290,8 +324,8 @@ export default function CsvCleaning() {
                                 type="button"
                                 onClick={handleDownloadCleanedCsv}
                                 disabled={isDownloading || isLoading}
-                                className="w-full sm:w-auto flex justify-center items-center py-3 px-6 border border-transparent rounded-lg shadow-md text-lg font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-300 ease-in-out transform hover:scale-105
-                                           disabled:opacity-50 disabled:cursor-not-allowed disabled:from-gray-400 disabled:to-gray-500"
+                                className="w-full sm:w-auto flex justify-center items-center py-3 px-6 border border-transparent rounded-lg shadow-md text-lg font-semibold text-white bg-gray-800 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition duration-300 ease-in-out transform hover:scale-105
+                                           disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-600"
                             >
                                 {isDownloading ? (
                                     <svg className="animate-spin h-6 w-6 mr-3 border-4 border-t-4 border-gray-200 rounded-full" viewBox="0 0 24 24"></svg>
@@ -304,42 +338,43 @@ export default function CsvCleaning() {
                             </button>
                         )}
 
+                        {cleaningResult && (
+                            <button
+                                type="button"
+                                onClick={handleAnalyzeData}
+                                className="w-full sm:w-auto flex justify-center items-center py-3 px-6 border border-transparent rounded-lg shadow-md text-lg font-semibold text-black bg-white/90 hover:bg-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-white transition duration-300 ease-in-out transform hover:scale-105"
+                            >
+                                Analyze Data
+                            </button>
+                        )}
+
                         <button
                             type="button"
                             onClick={handleReset}
-                            className="w-full sm:w-auto flex justify-center items-center py-3 px-6 border border-gray-300 rounded-lg shadow-md text-lg font-semibold text-gray-700 bg-white hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition duration-300 ease-in-out transform hover:scale-105"
+                            className="w-full sm:w-auto flex justify-center items-center py-3 px-6 border border-border rounded-lg shadow-md text-lg font-semibold text-foreground bg-transparent hover:bg-muted focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition duration-300 ease-in-out transform hover:scale-105"
                         >
                             Reset
-                        </button>
-
-                        {/* Debug button - for testing only */}
-                        <button
-                            type="button"
-                            onClick={debugNavigateToRemovedRows}
-                            className="w-full sm:w-auto flex justify-center items-center py-3 px-6 border border-yellow-300 rounded-lg shadow-md text-sm font-semibold text-yellow-800 bg-yellow-100 hover:bg-yellow-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 transition duration-300 ease-in-out"
-                        >
-                            Debug Test View
                         </button>
                     </div>
                 </form>
 
                 {/* Message / Error Display */}
                 {message && (
-                    <div className={`mt-8 p-4 rounded-lg relative shadow-md ${isError ? 'bg-red-100 border border-red-400 text-red-700' : 'bg-green-100 border border-green-400 text-green-700'}`} role="alert">
-                        <strong className="font-bold">{isError ? 'Error!' : 'Success!'}</strong>
+                    <div className={`mt-8 p-4 rounded-lg relative shadow-md border ${isError ? 'bg-destructive/10 border-destructive/20 text-destructive' : 'bg-zinc-100 border-zinc-200 text-zinc-900 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-100'}`} role="alert">
+                        <strong className="font-bold">{isError ? 'Error' : 'Success'}</strong>
                         <span className="block sm:inline ml-2">{message}</span>
                     </div>
                 )}
 
                 {/* Cleaning Results Display */}
                 {cleaningResult && (
-                    <div className="mt-8 p-6 bg-white border border-gray-200 rounded-lg shadow-inner animate-fade-in">
-                        <h3 className="text-2xl font-bold mb-6 text-gray-900">CSV Cleaning Results:</h3>
+                    <GlowingCard className="mt-8 p-6 shadow-inner animate-fade-in">
+                        <h3 className="text-2xl font-bold mb-6 text-foreground">CSV Cleaning Results:</h3>
 
                         {/* Data Quality Visualization */}
                         {cleaningResult.original_rows > 0 && (
-                            <div className="mb-8 p-4 bg-white border border-gray-200 rounded-lg">
-                                <h4 className="text-xl font-semibold text-gray-800 mb-4">
+                            <div className="mb-8 p-4 bg-background border border-border/40 rounded-lg">
+                                <h4 className="text-xl font-semibold text-foreground mb-4">
                                     Data Quality Visualization
                                 </h4>
                                 <DataQualityPieChart
@@ -350,23 +385,23 @@ export default function CsvCleaning() {
                         )}
 
                         {/* Cleaning Summary Section */}
-                        <div className={`mb-6 p-4 ${cleaningResult.rows_removed === 0 && !cleaningResult.type_conversions?.numeric_columns?.length ? 'bg-green-50 border border-green-200' : 'bg-blue-50 border border-blue-200'} rounded-lg`}>
-                            <h4 className={`text-xl font-semibold ${cleaningResult.rows_removed === 0 && !cleaningResult.type_conversions?.numeric_columns?.length ? 'text-green-800' : 'text-blue-800'} mb-3`}>
+                        <div className="mb-6 p-4 bg-muted/20 border border-border/40 rounded-lg">
+                            <h4 className="text-xl font-semibold text-foreground mb-3">
                                 {cleaningResult.rows_removed === 0 && !cleaningResult.type_conversions?.numeric_columns?.length ? '✓ Analysis Summary' : '🧹 Cleaning Summary'}
                             </h4>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-gray-700">
-                                <p><span className="font-semibold">Filename:</span> {cleaningResult.filename}</p>
-                                <p><span className="font-semibold">Original Rows:</span> {cleaningResult.original_rows.toLocaleString()}</p>
-                                <p><span className="font-semibold">Cleaned Rows:</span> {cleaningResult.cleaned_rows.toLocaleString()}</p>
-                                <p><span className="font-semibold">Rows Removed:</span> {cleaningResult.rows_removed.toLocaleString()} ({cleaningResult.removal_percentage}%)</p>
-                                <p className="col-span-full"><span className="font-semibold">{cleaningResult.rows_removed === 0 && !cleaningResult.type_conversions?.numeric_columns?.length ? 'Analysis Result:' : 'Cleaning Operations:'}</span> {cleaningResult.cleaning_summary}</p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-muted-foreground">
+                                <p><span className="font-semibold text-foreground">Filename:</span> {cleaningResult.filename}</p>
+                                <p><span className="font-semibold text-foreground">Original Rows:</span> {cleaningResult.original_rows.toLocaleString()}</p>
+                                <p><span className="font-semibold text-foreground">Cleaned Rows:</span> {cleaningResult.cleaned_rows.toLocaleString()}</p>
+                                <p><span className="font-semibold text-foreground">Rows Removed:</span> {cleaningResult.rows_removed.toLocaleString()} ({cleaningResult.removal_percentage}%)</p>
+                                <p className="col-span-full"><span className="font-semibold text-foreground">{cleaningResult.rows_removed === 0 && !cleaningResult.type_conversions?.numeric_columns?.length ? 'Analysis Result:' : 'Cleaning Operations:'}</span> {cleaningResult.cleaning_summary}</p>
 
                                 {/* Display duplicate rows information if available */}
                                 {cleaningResult.duplicate_rows_removed > 0 && (
-                                    <div className="col-span-full mt-4 pt-4 border-t border-blue-200">
-                                        <h5 className="text-lg font-medium text-blue-800 mb-2">Duplicate Rows Removed:</h5>
-                                        <p className="text-sm text-gray-700">
-                                            <span className="font-medium">{cleaningResult.duplicate_rows_removed.toLocaleString()}</span> duplicate {cleaningResult.duplicate_rows_removed === 1 ? 'row was' : 'rows were'} detected and removed from the dataset.
+                                    <div className="col-span-full mt-4 pt-4 border-t border-border/20">
+                                        <h5 className="text-lg font-medium text-foreground mb-2">Duplicate Rows Removed:</h5>
+                                        <p className="text-sm text-muted-foreground">
+                                            <span className="font-medium text-foreground">{cleaningResult.duplicate_rows_removed.toLocaleString()}</span> duplicate {cleaningResult.duplicate_rows_removed === 1 ? 'row was' : 'rows were'} detected and removed from the dataset.
                                         </p>
                                     </div>
                                 )}
@@ -378,12 +413,12 @@ export default function CsvCleaning() {
                                             <h5 className="text-lg font-medium text-gray-800 mb-2">Column Type Conversions:</h5>
 
                                             <div className="mb-4">
-                                                <p className="font-semibold text-gray-700">Numeric Columns:</p>
+                                                <p className="font-semibold text-muted-foreground">Numeric Columns:</p>
                                                 <div className="flex flex-wrap gap-1 mt-1">
                                                     {cleaningResult.type_conversions.numeric_columns.map((col, idx) => (
                                                         <span
                                                             key={idx}
-                                                            className="inline-block bg-blue-100 text-blue-800 text-sm px-2 py-1 rounded-md"
+                                                            className="inline-block bg-muted text-foreground text-sm px-2 py-1 rounded-md border border-border/20"
                                                             title={`Converted from ${cleaningResult.type_conversions.type_changes[col]?.from} to ${cleaningResult.type_conversions.type_changes[col]?.to}`}
                                                         >
                                                             {col}
@@ -398,23 +433,23 @@ export default function CsvCleaning() {
                                                 Object.keys(cleaningResult.type_conversions.type_changes).length > 0 &&
                                                 (!cleaningResult.type_conversions.conversion_details ||
                                                     Object.keys(cleaningResult.type_conversions.conversion_details).length === 0) && (
-                                                    <div className="mt-4 pt-4 border-t border-gray-200">
-                                                        <p className="font-semibold text-gray-700 mb-3">Type Conversion Details:</p>
+                                                    <div className="mt-4 pt-4 border-t border-border/20">
+                                                        <p className="font-semibold text-muted-foreground mb-3">Type Conversion Details:</p>
                                                         <div className="overflow-x-auto">
-                                                            <table className="min-w-full bg-white border border-gray-200 rounded-md">
-                                                                <thead className="bg-gray-100">
+                                                            <table className="min-w-full bg-card border border-border/20 rounded-md">
+                                                                <thead className="bg-muted/50">
                                                                     <tr>
-                                                                        <th className="py-2 px-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Column</th>
-                                                                        <th className="py-2 px-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Original Type</th>
-                                                                        <th className="py-2 px-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">New Type</th>
+                                                                        <th className="py-2 px-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Column</th>
+                                                                        <th className="py-2 px-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Original Type</th>
+                                                                        <th className="py-2 px-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">New Type</th>
                                                                     </tr>
                                                                 </thead>
-                                                                <tbody className="divide-y divide-gray-200">
+                                                                <tbody className="divide-y divide-border/20">
                                                                     {Object.entries(cleaningResult.type_conversions.type_changes).map(([col, types], idx) => (
-                                                                        <tr key={idx} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                                                                            <td className="py-2 px-3 text-sm font-medium text-gray-900">{col}</td>
-                                                                            <td className="py-2 px-3 text-sm text-gray-600">{types.from}</td>
-                                                                            <td className="py-2 px-3 text-sm text-blue-600 font-medium">{types.to}</td>
+                                                                        <tr key={idx} className={idx % 2 === 0 ? "bg-card" : "bg-muted/10"}>
+                                                                            <td className="py-2 px-3 text-sm font-medium text-foreground">{col}</td>
+                                                                            <td className="py-2 px-3 text-sm text-muted-foreground">{types.from}</td>
+                                                                            <td className="py-2 px-3 text-sm text-foreground font-medium">{types.to}</td>
                                                                         </tr>
                                                                     ))}
                                                                 </tbody>
@@ -429,12 +464,12 @@ export default function CsvCleaning() {
                                                 cleaningResult.type_conversions.conversion_details &&
                                                 typeof cleaningResult.type_conversions.conversion_details === 'object' &&
                                                 Object.keys(cleaningResult.type_conversions.conversion_details).length > 0 && (
-                                                    <div className="mt-4 pt-4 border-t border-gray-200">
-                                                        <p className="font-semibold text-gray-700 mb-3">Detailed Conversion Information:</p>
+                                                    <div className="mt-4 pt-4 border-t border-border/20">
+                                                        <p className="font-semibold text-muted-foreground mb-3">Detailed Conversion Information:</p>
 
                                                         {/* Type Conversion Chart */}
                                                         <div className="mb-6">
-                                                            <h5 className="text-lg font-medium text-gray-600 mb-3">Column Type Conversion Success Rate</h5>
+                                                            <h5 className="text-lg font-medium text-muted-foreground mb-3">Column Type Conversion Success Rate</h5>
                                                             <TypeConversionChart
                                                                 conversionDetails={cleaningResult.type_conversions.conversion_details}
                                                             />
@@ -442,34 +477,34 @@ export default function CsvCleaning() {
 
                                                         {/* Detailed Table */}
                                                         <div className="overflow-x-auto">
-                                                            <table className="min-w-full bg-white border border-gray-200 rounded-md">
-                                                                <thead className="bg-gray-100">
+                                                            <table className="min-w-full bg-card border border-border/20 rounded-md">
+                                                                <thead className="bg-muted/50">
                                                                     <tr>
-                                                                        <th className="py-2 px-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Column</th>
-                                                                        <th className="py-2 px-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Original Type</th>
-                                                                        <th className="py-2 px-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">New Type</th>
-                                                                        <th className="py-2 px-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Success Rate</th>
-                                                                        <th className="py-2 px-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Values</th>
+                                                                        <th className="py-2 px-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Column</th>
+                                                                        <th className="py-2 px-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Original Type</th>
+                                                                        <th className="py-2 px-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">New Type</th>
+                                                                        <th className="py-2 px-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Success Rate</th>
+                                                                        <th className="py-2 px-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Values</th>
                                                                     </tr>
                                                                 </thead>
                                                                 <tbody className="divide-y divide-gray-200">
                                                                     {Object.entries(cleaningResult.type_conversions.conversion_details).map(([col, details], idx) => (
-                                                                        <tr key={idx} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                                                                            <td className="py-2 px-3 text-sm font-medium text-gray-900">{col}</td>
-                                                                            <td className="py-2 px-3 text-sm text-gray-600">{details.original_type}</td>
-                                                                            <td className="py-2 px-3 text-sm text-blue-600 font-medium">{details.new_type}</td>
-                                                                            <td className="py-2 px-3 text-sm text-gray-600">
+                                                                        <tr key={idx} className={idx % 2 === 0 ? "bg-card" : "bg-muted/10"}>
+                                                                            <td className="py-2 px-3 text-sm font-medium text-foreground">{col}</td>
+                                                                            <td className="py-2 px-3 text-sm text-muted-foreground">{details.original_type}</td>
+                                                                            <td className="py-2 px-3 text-sm text-foreground font-medium">{details.new_type}</td>
+                                                                            <td className="py-2 px-3 text-sm text-muted-foreground">
                                                                                 <div className="flex items-center">
-                                                                                    <div className="w-16 bg-gray-200 rounded-full h-2.5 mr-2">
+                                                                                    <div className="w-16 bg-muted rounded-full h-2.5 mr-2">
                                                                                         <div
-                                                                                            className="bg-blue-600 h-2.5 rounded-full"
+                                                                                            className="bg-foreground h-2.5 rounded-full"
                                                                                             style={{ width: `${details.success_rate * 100}%` }}
                                                                                         ></div>
                                                                                     </div>
                                                                                     {Math.round(details.success_rate * 100)}%
                                                                                 </div>
                                                                             </td>
-                                                                            <td className="py-2 px-3 text-sm text-gray-600">
+                                                                            <td className="py-2 px-3 text-sm text-muted-foreground">
                                                                                 {details.valid_numeric_values.toLocaleString()} of {details.values_before_conversion.toLocaleString()} converted
                                                                             </td>
                                                                         </tr>
@@ -487,19 +522,19 @@ export default function CsvCleaning() {
                         {/* Removed Rows Section - Show if there were rows removed */}
                         {cleaningResult.rows_removed > 0 && (
                             <div className="mb-6">
-                                <h4 className="text-xl font-semibold text-gray-800 mb-3">
+                                <h4 className="text-xl font-semibold text-foreground mb-3">
                                     🗑️ Removed Rows
                                 </h4>
 
-                                <div className="p-4 bg-red-50 border-l-4 border-red-400 rounded-md mb-4">
+                                <div className="p-4 bg-destructive/10 border-l-4 border-destructive rounded-md mb-4">
                                     <div className="flex">
                                         <div className="flex-shrink-0">
-                                            <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                                            <svg className="h-5 w-5 text-destructive" viewBox="0 0 20 20" fill="currentColor">
                                                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                                             </svg>
                                         </div>
                                         <div className="ml-3">
-                                            <p className="text-sm text-red-700">
+                                            <p className="text-sm text-destructive">
                                                 <span className="font-medium">Removed {cleaningResult.rows_removed} rows</span> containing null values ({cleaningResult.removal_percentage}% of data).
                                             </p>
                                         </div>
@@ -509,8 +544,8 @@ export default function CsvCleaning() {
                                 {/* Null Data Column Chart - visualize nulls per column */}
                                 {cleaningResult.null_data && cleaningResult.null_data.null_counts_by_column && (
                                     <div className="mb-6 mt-4">
-                                        <h5 className="text-lg font-medium text-gray-600 mb-3">Null Values by Column</h5>
-                                        <div className="p-4 bg-white border border-gray-200 rounded-lg">
+                                        <h5 className="text-lg font-medium text-muted-foreground mb-3">Null Values by Column</h5>
+                                        <div className="p-4 bg-card border border-border/40 rounded-lg">
                                             <NullDataChart
                                                 nullCountsByColumn={cleaningResult.null_data.null_counts_by_column}
                                                 totalRows={cleaningResult.original_rows}
@@ -564,34 +599,34 @@ export default function CsvCleaning() {
 
                         {/* Data Preview Section */}
                         <div className="mb-6">
-                            <h4 className="text-xl font-semibold text-gray-800 mb-3">
+                            <h4 className="text-xl font-semibold text-foreground mb-3">
                                 📋 {cleaningResult.rows_removed === 0 &&
                                     !cleaningResult.type_conversions?.numeric_columns?.length
                                     ? 'Data Preview'
                                     : 'Processed Data Preview'}
                             </h4>
-                            <div className="overflow-x-auto rounded-lg border border-gray-200 shadow">
-                                <table className="min-w-full divide-y divide-gray-200">
-                                    <thead className="bg-gray-50">
+                            <div className="overflow-x-auto rounded-lg border border-border/40 shadow">
+                                <table className="min-w-full divide-y divide-border/20">
+                                    <thead className="bg-muted/50">
                                         <tr>
                                             {cleaningResult.columns.map((column, index) => (
                                                 <th
                                                     key={index}
                                                     scope="col"
-                                                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                                    className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider"
                                                 >
                                                     {column}
                                                 </th>
                                             ))}
                                         </tr>
                                     </thead>
-                                    <tbody className="bg-white divide-y divide-gray-200">
+                                    <tbody className="bg-card divide-y divide-border/20">
                                         {cleaningResult.cleaned_data.map((row, rowIndex) => (
-                                            <tr key={rowIndex} className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                            <tr key={rowIndex} className={rowIndex % 2 === 0 ? 'bg-card' : 'bg-muted/20'}>
                                                 {cleaningResult.columns.map((column, colIndex) => (
                                                     <td
                                                         key={`${rowIndex}-${colIndex}`}
-                                                        className="px-6 py-4 whitespace-nowrap text-sm text-gray-500"
+                                                        className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground"
                                                     >
                                                         {row[column]}
                                                     </td>
@@ -601,11 +636,11 @@ export default function CsvCleaning() {
                                     </tbody>
                                 </table>
                             </div>
-                            <p className="mt-2 text-sm text-gray-500">
+                            <p className="mt-2 text-sm text-muted-foreground">
                                 Showing {cleaningResult.cleaned_data.length} of {cleaningResult.cleaned_rows} rows
                             </p>
                         </div>
-                    </div>
+                    </GlowingCard>
 
                 )}
             </div>

@@ -119,7 +119,7 @@ class CausalService:
         # Coerce to numeric where possible
         df_num = df.copy()
         for col in df_num.columns:
-            if not np.issubdtype(df_num[col].dtype, np.number):
+            if not pd.api.types.is_numeric_dtype(df_num[col]):
                 df_num[col] = pd.to_numeric(df_num[col], errors="coerce")
         df_num = df_num.dropna()
 

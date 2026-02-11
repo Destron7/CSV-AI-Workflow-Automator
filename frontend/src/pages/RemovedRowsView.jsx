@@ -94,14 +94,14 @@ export default function RemovedRowsView() {
                 </button>
             </div>
 
-            <div className="bg-white rounded-lg shadow-md p-6">
-                <h1 className="text-2xl font-bold mb-4 text-gray-800">
+            <div className="bg-card rounded-lg shadow-md p-6 border border-border/40">
+                <h1 className="text-2xl font-bold mb-4 text-foreground">
                     🗑️ All Removed Rows
                 </h1>
 
                 {filename && (
-                    <p className="text-gray-600 mb-4">
-                        Showing all rows that were removed from <span className="font-semibold">{filename}</span> due to null values
+                    <p className="text-muted-foreground mb-4">
+                        Showing all rows that were removed from <span className="font-semibold text-foreground">{filename}</span> due to null values
                     </p>
                 )}
 
@@ -127,7 +127,7 @@ export default function RemovedRowsView() {
                                 </div>
                                 <input
                                     type="text"
-                                    className="border border-gray-300 bg-white h-10 pl-10 pr-4 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    className="border border-input bg-background h-10 pl-10 pr-4 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary text-foreground"
                                     placeholder="Search removed rows..."
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
@@ -145,9 +145,9 @@ export default function RemovedRowsView() {
 
                         <div className="mb-4 flex justify-between items-center">
                             <div>
-                                <label className="mr-2 text-sm text-gray-700">Rows per page:</label>
+                                <label className="mr-2 text-sm text-muted-foreground">Rows per page:</label>
                                 <select
-                                    className="border rounded px-2 py-1 text-sm"
+                                    className="border border-input bg-background text-foreground rounded px-2 py-1 text-sm"
                                     value={rowsPerPage}
                                     onChange={handleRowsPerPageChange}
                                 >
@@ -157,7 +157,7 @@ export default function RemovedRowsView() {
                                     <option value={100}>100</option>
                                 </select>
                             </div>
-                            <div className="text-sm text-gray-700">
+                            <div className="text-sm text-muted-foreground">
                                 {filteredRows.length > 0 ?
                                     `Showing ${((currentPage - 1) * rowsPerPage) + 1} - ${Math.min(currentPage * rowsPerPage, filteredRows.length)} of ${filteredRows.length} rows` :
                                     'No rows to display'
@@ -168,9 +168,9 @@ export default function RemovedRowsView() {
                             </div>
                         </div>
 
-                        <div className="overflow-x-auto rounded-lg border border-gray-200 shadow">
-                            <table className="min-w-full divide-y divide-gray-200">
-                                <thead className="bg-red-50">
+                        <div className="overflow-x-auto rounded-lg border border-border/40 shadow">
+                            <table className="min-w-full divide-y divide-border/20">
+                                <thead className="bg-muted/50">
                                     <tr>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-red-500 uppercase tracking-wider">
                                             Row Index
@@ -179,16 +179,16 @@ export default function RemovedRowsView() {
                                             <th
                                                 key={index}
                                                 scope="col"
-                                                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                                                className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider"
                                             >
                                                 {column}
                                             </th>
                                         ))}
                                     </tr>
                                 </thead>
-                                <tbody className="bg-white divide-y divide-gray-200">
+                                <tbody className="bg-card divide-y divide-border/20">
                                     {paginatedRows.map((row, rowIndex) => (
-                                        <tr key={rowIndex} className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                        <tr key={rowIndex} className={rowIndex % 2 === 0 ? 'bg-card' : 'bg-muted/10'}>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-500">
                                                 {row.row_index}
                                             </td>
@@ -196,8 +196,8 @@ export default function RemovedRowsView() {
                                                 <td
                                                     key={`${rowIndex}-${colIndex}`}
                                                     className={`px-6 py-4 whitespace-nowrap text-sm ${row.data[column] === null
-                                                        ? 'bg-red-50 text-red-500 font-semibold italic'
-                                                        : 'text-gray-500'
+                                                        ? 'bg-destructive/10 text-destructive font-semibold italic'
+                                                        : 'text-muted-foreground'
                                                         }`}
                                                 >
                                                     {row.data[column] === null ? 'NULL' : row.data[column]}
@@ -269,8 +269,8 @@ export default function RemovedRowsView() {
                                                 key={pageNum}
                                                 onClick={() => handlePageChange(pageNum)}
                                                 className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${currentPage === pageNum
-                                                        ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
-                                                        : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                                                    ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
+                                                    : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
                                                     }`}
                                             >
                                                 {pageNum}

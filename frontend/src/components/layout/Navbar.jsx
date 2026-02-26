@@ -19,6 +19,7 @@ const navigationLinks = [
     { href: "/", label: "Home" },
     { href: "/csv-cleaning", label: "Data Cleaning" },
     { href: "/csv-analysis", label: "Analysis" },
+    { href: "/chat", label: "Chat" },
 ];
 
 export default function Navbar() {

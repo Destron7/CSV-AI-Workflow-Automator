@@ -8,6 +8,7 @@ import CsvCleaning from './pages/CsvCleaning';
 
 import NotFound404 from './pages/NotFound404';
 import RemovedRowsView from './pages/RemovedRowsView';
+import Chat from './pages/Chat';
 
 function App() {
   return (
@@ -26,6 +27,7 @@ function App() {
           <Route path="/csv-analysis" element={<CsvAnalysis />} />
           <Route path="/csv-cleaning" element={<CsvCleaning />} />
           <Route path="/removed-rows" element={<RemovedRowsView />} />
+          <Route path="/chat" element={<Chat />} />
 
           <Route path="*" element={<NotFound404 />} />
         </Routes>

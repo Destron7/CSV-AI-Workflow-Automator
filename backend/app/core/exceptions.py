@@ -37,3 +37,9 @@ class ConfigurationError(Exception):
     """Raised when configuration is invalid"""
 
     pass
+
+
+class ChatError(Exception):
+    """Raised when chat interactions with LLM or Agent fail"""
+
+    pass

@@ -32,5 +32,9 @@ class Settings:
     MAX_PREVIEW_ROWS: int = 100
     DEFAULT_PREVIEW_ROWS: int = 5
 
+    # Agent Settings
+    AGENT_MAX_ITERATIONS: int = 12
+    AGENT_MAX_EXECUTION_TIME: int = 120  # seconds
+
 
 settings = Settings()

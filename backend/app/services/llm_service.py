@@ -1,41 +1,46 @@
-from langchain_community.chat_models import ChatOllama
+from langchain_ollama import ChatOllama
 from app.core.exceptions import ChatError
 
 
 class LLMService:
-    """Service to interact with the local LLM safely"""
+    """Service to interact with local LLMs via Ollama.
 
-    def __init__(self):
-        # Only model currently available: llama3.1:8b
-        self.default_model = "llama3.1:8b"
+    Provides two purpose-specific models:
+      - logic_llm:   Qwen 2.5 Coder 7B  → deterministic pandas code execution
+      - summary_llm: Llama 3.2          → friendly natural-language summarization
+    """
 
-    def get_llm(self, model_name: str = None) -> ChatOllama:
-        """
-        Get an instance of ChatOllama.
+    LOGIC_MODEL = "qwen2.5-coder:7b"
+    SUMMARY_MODEL = "llama3.2"
 
-        Args:
-            model_name (str): The exact Ollama model tag (e.g., 'llama3.1:8b').
-                              Defaults to llama3.1:8b.
-
-        Returns:
-            ChatOllama: An initialized chat model.
-        """
-        target_model = model_name if model_name else self.default_model
-
+    def _create_llm(self, model: str, temperature: float) -> ChatOllama:
+        """Internal factory for ChatOllama instances."""
         try:
-            # We configure ChatOllama to use the local Ollama instance (typically running on localhost:11434)
-            # num_gpu=-1 tells Ollama to offload ALL model layers to GPU (CUDA)
-            llm = ChatOllama(
-                model=target_model,
-                temperature=0.0,
-                num_gpu=-1,      # use all available GPU layers (CUDA)
+            return ChatOllama(
+                model=model,
+                temperature=temperature,
+                base_url="http://localhost:11434",
+                num_gpu=-1,  # offload all layers to GPU (CUDA)
             )
-            return llm
         except Exception as e:
             raise ChatError(
-                f"Failed to initialize ChatOllama with model '{target_model}'. "
+                f"Failed to initialize ChatOllama with model '{model}'. "
                 f"Ensure Ollama is running locally and the model is pulled. Error: {str(e)}"
             )
 
-# Create a singleton instance to be used across the application
+    def get_logic_llm(self) -> ChatOllama:
+        """Qwen 2.5 Coder — deterministic code generation for pandas analysis."""
+        return self._create_llm(self.LOGIC_MODEL, temperature=0.0)
+
+    def get_summary_llm(self) -> ChatOllama:
+        """Llama 3.2 — slightly creative for human-friendly summarization."""
+        return self._create_llm(self.SUMMARY_MODEL, temperature=0.3)
+
+    # Keep backward-compat for any other callers
+    def get_llm(self, model_name: str = None) -> ChatOllama:
+        """Generic factory (defaults to logic model)."""
+        return self._create_llm(model_name or self.LOGIC_MODEL, temperature=0.0)
+
+
+# Singleton
 llm_service = LLMService()

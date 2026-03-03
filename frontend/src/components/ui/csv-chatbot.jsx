@@ -1,12 +1,12 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { Textarea } from "../ui/textarea";
 import { cn } from "../../lib/utils";
-import { ArrowUpIcon, Paperclip, Bot, ChevronDown, Square } from "lucide-react";
+import { ArrowUpIcon, Paperclip, Bot, Square } from "lucide-react";
 import axios from "axios";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
-const AVAILABLE_MODELS = [
-    { value: "llama3.1:8b", label: "Llama 3.1 8B" },
-];
+const PIPELINE_LABEL = "Qwen 2.5 Coder → Llama 3.2";
 
 
 function useAutoResizeTextarea({ minHeight, maxHeight }) {
@@ -48,7 +48,7 @@ function useAutoResizeTextarea({ minHeight, maxHeight }) {
 function ChatMessage({ message }) {
     const isUser = message.role === "user";
     return (
-        <div className={cn("flex gap-3 mb-4", isUser ? "justify-end" : "justify-start")}>
+        <div className={cn("flex gap-3 mb-6", isUser ? "justify-end" : "justify-start")}>
             {!isUser && (
                 <div className="flex-shrink-0 w-8 h-8 rounded-full bg-white/10 border border-white/20 flex items-center justify-center">
                     <Bot className="w-4 h-4 text-white/70" />
@@ -56,19 +56,33 @@ function ChatMessage({ message }) {
             )}
             <div
                 className={cn(
-                    "max-w-[80%] rounded-2xl px-4 py-3 text-sm",
+                    "rounded-2xl px-4 py-3 text-sm",
                     isUser
-                        ? "bg-white text-black rounded-br-sm"
-                        : "bg-white/10 border border-white/10 text-white/90 rounded-bl-sm backdrop-blur-sm"
+                        ? "max-w-[80%] bg-white text-black rounded-br-sm"
+                        : "max-w-full overflow-x-auto bg-white/10 border border-white/10 text-white/90 rounded-bl-sm backdrop-blur-sm"
                 )}
             >
-                <p className="whitespace-pre-wrap">{message.content}</p>
-                {message.code && (
-                    <div className="mt-3 p-2 rounded-lg bg-black/30 border border-white/10">
-                        <p className="text-xs text-white/40 mb-1 font-mono">code executed</p>
-                        <pre className="text-xs text-green-400 font-mono overflow-x-auto whitespace-pre-wrap">
-                            {message.code}
-                        </pre>
+                {isUser ? (
+                    <p className="whitespace-pre-wrap">{message.content}</p>
+                ) : (
+                    <div
+                        className={cn(
+                            "prose prose-sm prose-invert max-w-none",
+                            "prose-headings:text-white prose-headings:font-semibold prose-headings:mt-3 prose-headings:mb-1.5",
+                            "prose-p:text-white/90 prose-p:my-1.5 prose-p:leading-relaxed",
+                            "prose-a:text-blue-400 prose-a:no-underline hover:prose-a:underline",
+                            "prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-li:text-white/90",
+                            "prose-code:text-emerald-400 prose-code:bg-black/30 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-code:font-mono prose-code:before:content-none prose-code:after:content-none",
+                            "prose-pre:bg-black/40 prose-pre:border prose-pre:border-white/10 prose-pre:rounded-lg prose-pre:my-2",
+                            "prose-strong:text-white prose-em:text-white/80",
+                            "prose-table:border-collapse prose-th:border prose-th:border-white/15 prose-th:px-3 prose-th:py-1.5 prose-th:bg-white/5 prose-th:text-white/90 prose-td:border prose-td:border-white/10 prose-td:px-3 prose-td:py-1.5 prose-td:text-white/80",
+                            "prose-blockquote:border-l-2 prose-blockquote:border-white/20 prose-blockquote:text-white/70 prose-blockquote:my-2",
+                            "prose-hr:border-white/10"
+                        )}
+                    >
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {message.content}
+                        </ReactMarkdown>
                     </div>
                 )}
             </div>
@@ -76,17 +90,66 @@ function ChatMessage({ message }) {
     );
 }
 
+// localStorage helpers
+const STORAGE_KEYS = {
+    MESSAGES: "csvChat_messages",
+    SESSION_ID: "csvChat_sessionId",
+    CSV_INFO: "csvChat_csvInfo",
+    FILE_NAME: "csvChat_fileName",
+};
+
+function loadFromStorage(key, fallback = null) {
+    try {
+        const stored = localStorage.getItem(key);
+        return stored ? JSON.parse(stored) : fallback;
+    } catch {
+        return fallback;
+    }
+}
+
+function saveToStorage(key, value) {
+    try {
+        localStorage.setItem(key, JSON.stringify(value));
+    } catch { /* storage full — silently ignore */ }
+}
+
+function clearChatStorage() {
+    Object.values(STORAGE_KEYS).forEach((k) => localStorage.removeItem(k));
+}
+
 export function CsvChatbot({ uploadedFile }) {
     const [value, setValue] = useState("");
-    const [selectedModel, setSelectedModel] = useState("llama3.1:8b");
-    const [isModelOpen, setIsModelOpen] = useState(false);
-    const [messages, setMessages] = useState([]);
+    const [messages, setMessages] = useState(
+        () => loadFromStorage(STORAGE_KEYS.MESSAGES, [])
+    );
     const [isLoading, setIsLoading] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
     const [, setError] = useState(null);
     const messagesEndRef = useRef(null);
     const fileInputRef = useRef(null);
     const abortControllerRef = useRef(null);
-    const [localFile, setLocalFile] = useState(uploadedFile || null);
+
+    // For localFile we store a lightweight { name } object when restoring from storage
+    const storedFileName = loadFromStorage(STORAGE_KEYS.FILE_NAME);
+    const [localFile, setLocalFile] = useState(
+        uploadedFile || (storedFileName ? { name: storedFileName } : null)
+    );
+
+    // Session state
+    const [sessionId, setSessionId] = useState(
+        () => loadFromStorage(STORAGE_KEYS.SESSION_ID)
+    );
+    const [csvInfo, setCsvInfo] = useState(
+        () => loadFromStorage(STORAGE_KEYS.CSV_INFO)
+    );
+
+    // ── Persist state changes to localStorage ──
+    useEffect(() => { saveToStorage(STORAGE_KEYS.MESSAGES, messages); }, [messages]);
+    useEffect(() => { saveToStorage(STORAGE_KEYS.SESSION_ID, sessionId); }, [sessionId]);
+    useEffect(() => { saveToStorage(STORAGE_KEYS.CSV_INFO, csvInfo); }, [csvInfo]);
+    useEffect(() => {
+        saveToStorage(STORAGE_KEYS.FILE_NAME, localFile?.name || null);
+    }, [localFile]);
 
     const { textareaRef, adjustHeight } = useAutoResizeTextarea({
         minHeight: 60,
@@ -94,22 +157,64 @@ export function CsvChatbot({ uploadedFile }) {
     });
 
     const hasFile = !!localFile;
+    const hasSession = !!sessionId;
 
     // Auto-scroll to newest message
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages, isLoading]);
 
+    // Upload CSV to create a dual-agent session
+    const uploadCSV = useCallback(async (file) => {
+        if (!file) return;
+
+        setIsUploading(true);
+        setError(null);
+        setSessionId(null);
+        setCsvInfo(null);
+        setMessages([]);
+
+        try {
+            const formData = new FormData();
+            formData.append("file", file);
+
+            const response = await axios.post(
+                "http://localhost:8000/api/v1/chat/upload",
+                formData,
+                { headers: { "Content-Type": "multipart/form-data" } }
+            );
+
+            const { session_id, columns, row_count, models_used } = response.data;
+            setSessionId(session_id);
+            setCsvInfo({ columns, row_count, models_used });
+        } catch (err) {
+            const detail = err?.response?.data?.detail || err.message || "Upload failed.";
+            setError(detail);
+            setMessages([{ role: "assistant", content: `⚠️ Upload Error: ${detail}` }]);
+        } finally {
+            setIsUploading(false);
+        }
+    }, []);
+
+    // Trigger upload when file is selected
     const handleFileChange = (e) => {
         const file = e.target.files[0];
         if (file && file.name.endsWith(".csv")) {
             setLocalFile(file);
-            setMessages([]);
-            setError(null);
+            uploadCSV(file);
         } else {
             setError("Please select a valid .csv file.");
         }
     };
+
+    // Also upload if an external file prop is provided
+    useEffect(() => {
+        if (uploadedFile) {
+            setLocalFile(uploadedFile);
+            uploadCSV(uploadedFile);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [uploadedFile]);
 
     const handleStop = () => {
         if (abortControllerRef.current) {
@@ -118,7 +223,7 @@ export function CsvChatbot({ uploadedFile }) {
     };
 
     const handleSend = async () => {
-        if (!value.trim() || !hasFile) return;
+        if (!value.trim() || !hasSession) return;
 
         const userMessage = value.trim();
         setValue("");
@@ -131,39 +236,27 @@ export function CsvChatbot({ uploadedFile }) {
         ]);
         setIsLoading(true);
 
-        // Create a fresh AbortController for this request
         const controller = new AbortController();
         abortControllerRef.current = controller;
 
         try {
-            const formData = new FormData();
-            formData.append("message", userMessage);
-            formData.append("model_name", selectedModel);
-            formData.append("file", localFile);
-
+            // JSON POST — no file re-upload needed!
             const response = await axios.post(
-                "http://localhost:8000/api/v1/chat/",
-                formData,
+                "http://localhost:8000/api/v1/chat/ask",
                 {
-                    headers: { "Content-Type": "multipart/form-data" },
-                    signal: controller.signal,
-                }
+                    session_id: sessionId,
+                    question: userMessage,
+                },
+                { signal: controller.signal }
             );
 
-            const { answer, executed_code } = response.data;
+            const { answer } = response.data;
             setMessages((prev) => [
                 ...prev,
-                {
-                    role: "assistant",
-                    content: answer,
-                    code: executed_code !== "Code execution details are internal to the Zero-Shot reasoning trace."
-                        ? executed_code
-                        : null,
-                },
+                { role: "assistant", content: answer },
             ]);
         } catch (err) {
             if (axios.isCancel(err) || err.name === "CanceledError") {
-                // Request was aborted by the user — remove the typing indicator silently
                 setMessages((prev) => [
                     ...prev,
                     { role: "assistant", content: "⏹ Generation stopped." },
@@ -189,7 +282,17 @@ export function CsvChatbot({ uploadedFile }) {
         }
     };
 
-    const selectedModelLabel = AVAILABLE_MODELS.find((m) => m.value === selectedModel)?.label;
+    const handleRemoveFile = () => {
+        // Clean up the backend session
+        if (sessionId) {
+            axios.delete(`http://localhost:8000/api/v1/chat/${sessionId}`).catch(() => { });
+        }
+        setLocalFile(null);
+        setSessionId(null);
+        setCsvInfo(null);
+        setMessages([]);
+        clearChatStorage();
+    };
 
     return (
         <div className="flex flex-col w-full max-w-3xl mx-auto h-[calc(100vh-180px)] min-h-[500px]">
@@ -202,34 +305,10 @@ export function CsvChatbot({ uploadedFile }) {
                     </p>
                 </div>
 
-                {/* Model Selector */}
-                <div className="relative">
-                    <button
-                        onClick={() => setIsModelOpen((o) => !o)}
-                        className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/15 text-white/80 text-sm hover:bg-white/10 transition-all"
-                    >
-                        <Bot className="w-4 h-4 text-white/60" />
-                        {selectedModelLabel}
-                        <ChevronDown className={cn("w-3 h-3 text-white/40 transition-transform", isModelOpen && "rotate-180")} />
-                    </button>
-                    {isModelOpen && (
-                        <div className="absolute right-0 mt-2 w-36 rounded-xl border border-white/10 bg-black/80 backdrop-blur-xl shadow-xl z-50 overflow-hidden">
-                            {AVAILABLE_MODELS.map((model) => (
-                                <button
-                                    key={model.value}
-                                    onClick={() => { setSelectedModel(model.value); setIsModelOpen(false); }}
-                                    className={cn(
-                                        "w-full text-left px-4 py-2.5 text-sm transition-colors",
-                                        selectedModel === model.value
-                                            ? "bg-white/15 text-white"
-                                            : "text-white/60 hover:bg-white/10 hover:text-white"
-                                    )}
-                                >
-                                    {model.label}
-                                </button>
-                            ))}
-                        </div>
-                    )}
+                {/* Pipeline Badge */}
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 border border-white/15 text-white/60 text-xs">
+                    <Bot className="w-4 h-4 text-white/40" />
+                    <span>{csvInfo?.models_used || PIPELINE_LABEL}</span>
                 </div>
             </div>
 
@@ -259,33 +338,49 @@ export function CsvChatbot({ uploadedFile }) {
             {/* Chat area */}
             {hasFile && (
                 <>
-                    {/* File badge */}
+                    {/* File badge + session info */}
                     <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-xl bg-white/5 border border-white/10 w-fit">
                         <Paperclip className="w-3.5 h-3.5 text-white/50" />
                         <span className="text-xs text-white/60 font-medium truncate max-w-[200px]">{localFile.name}</span>
+                        {csvInfo && (
+                            <span className="text-xs text-white/40">
+                                · {csvInfo.row_count} rows · {csvInfo.columns.length} cols
+                            </span>
+                        )}
+                        {isUploading && (
+                            <span className="text-xs text-yellow-400/80 animate-pulse">Initializing…</span>
+                        )}
                         <button
-                            onClick={() => { setLocalFile(null); setMessages([]); }}
+                            onClick={handleRemoveFile}
                             className="ml-1 text-white/30 hover:text-white/70 transition-colors text-xs"
                         >✕</button>
                     </div>
 
                     {/* Messages scroll area */}
-                    <div className="flex-1 overflow-y-auto pr-2 mb-3 space-y-1 scrollbar-thin scrollbar-thumb-white/10">
+                    <div className="flex-1 overflow-y-auto pr-2 mb-3 space-y-4">
                         {messages.length === 0 && (
                             <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
                                 <Bot className="w-10 h-10 text-white/20" />
-                                <p className="text-white/40 text-sm">
-                                    Ask anything about <span className="text-white/60 font-medium">{localFile.name}</span>
-                                </p>
-                                <div className="flex flex-wrap gap-2 justify-center mt-2">
-                                    {["What are the columns?", "Give me a summary", "Any null values?", "Top 5 rows?"].map((q) => (
-                                        <button
-                                            key={q}
-                                            onClick={() => { setValue(q); textareaRef.current?.focus(); }}
-                                            className="px-3 py-1.5 text-xs rounded-full border border-white/10 text-white/50 hover:border-white/30 hover:text-white/80 bg-white/5 transition-all"
-                                        >{q}</button>
-                                    ))}
-                                </div>
+                                {isUploading ? (
+                                    <p className="text-white/40 text-sm animate-pulse">
+                                        Setting up your session…
+                                    </p>
+                                ) : (
+                                    <>
+                                        <p className="text-white/40 text-sm">
+                                            Ask anything about <span className="text-white/60 font-medium">{localFile.name}</span>
+                                        </p>
+                                        <div className="flex flex-wrap gap-2 justify-center mt-2">
+                                            {["What are the columns?", "Give me a summary", "Any null values?", "Top 5 rows?"].map((q) => (
+                                                <button
+                                                    key={q}
+                                                    onClick={() => { setValue(q); textareaRef.current?.focus(); }}
+                                                    className="px-3 py-1.5 text-xs rounded-full border border-white/10 text-white/50 hover:border-white/30 hover:text-white/80 bg-white/5 transition-all"
+                                                >{q}</button>
+                                            ))}
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         )}
                         {messages.map((msg, i) => <ChatMessage key={i} message={msg} />)}
@@ -313,13 +408,13 @@ export function CsvChatbot({ uploadedFile }) {
                             value={value}
                             onChange={(e) => { setValue(e.target.value); adjustHeight(); }}
                             onKeyDown={handleKeyDown}
-                            placeholder="Ask a question about your data..."
-                            disabled={isLoading}
+                            placeholder={hasSession ? "Ask a question about your data..." : "Waiting for session to initialize..."}
+                            disabled={isLoading || !hasSession}
                             className={cn(
                                 "w-full px-4 py-3 resize-none bg-transparent border-none text-white text-sm",
                                 "focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0",
                                 "placeholder:text-white/30 min-h-[60px]",
-                                isLoading && "opacity-50 cursor-not-allowed"
+                                (isLoading || !hasSession) && "opacity-50 cursor-not-allowed"
                             )}
                             style={{ overflow: "hidden" }}
                         />
@@ -346,10 +441,10 @@ export function CsvChatbot({ uploadedFile }) {
                                 <button
                                     type="button"
                                     onClick={handleSend}
-                                    disabled={!value.trim()}
+                                    disabled={!value.trim() || !hasSession}
                                     className={cn(
                                         "p-2 rounded-xl border transition-all",
-                                        value.trim()
+                                        value.trim() && hasSession
                                             ? "bg-white text-black border-transparent hover:bg-white/90"
                                             : "bg-transparent text-white/20 border-white/10 cursor-not-allowed"
                                     )}
@@ -364,4 +459,3 @@ export function CsvChatbot({ uploadedFile }) {
         </div>
     );
 }
-

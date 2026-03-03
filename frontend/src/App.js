@@ -14,7 +14,7 @@ function App() {
   return (
     <div className="relative min-h-screen w-full bg-black">
       <Particles
-        className="absolute inset-0 z-0"
+        className="fixed inset-0 z-0"
         quantity={200}
         ease={80}
         color="#ffffff"

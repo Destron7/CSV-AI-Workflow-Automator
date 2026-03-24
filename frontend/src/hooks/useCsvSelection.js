@@ -1,94 +1,139 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import { setCsvData, clearCsvData } from '../store/csvSlice';
+import { setCsvMeta, clearCsvData } from '../store/csvSlice';
 import { parseCsvFile, jsonToCsvString } from '../utils/csvParser';
+import localforage from 'localforage';
+
+// Dedicated IndexedDB store for raw CSV text (separate from redux-persist)
+const csvStorage = localforage.createInstance({
+    name: 'csv-workflow',
+    storeName: 'csv_raw_content',
+});
+
+const CSV_RAW_KEY = 'raw_csv_text';
 
 export const useCsvSelection = () => {
     const dispatch = useDispatch();
-    const { data, columns, filename, metadata } = useSelector((state) => state.csv);
+    const { columns, filename, metadata, rowCount } = useSelector((state) => state.csv);
 
     // Local state for the File object (needed for APIs that expect a File)
     const [selectedFile, setSelectedFile] = useState(null);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [isRestoring, setIsRestoring] = useState(true);
 
-    // Sync Redux state to local File object
+    // On mount: restore File from IndexedDB if we have metadata in Redux
     useEffect(() => {
-        if (data && data.length > 0 && columns.length > 0 && filename) {
-            // Check if we need to regenerate the file (e.g. if Redux changed but local file is stale/null)
-            // We use a simple check: if selectedFile.name matches filename, we assume it's mostly in sync, 
-            // BUT for "Cleaning", the content might change while filename stays same. 
-            // So we can arguably always regenerate if they mismatch or if we want to be sure.
-            // For performance, maybe only if selectedFile is null or name mismatches?
-            // User requirement: "If the choosen file is cleaned then replace that with the current value"
+        let cancelled = false;
 
-            // Reconstruct the file content
-            const csvString = jsonToCsvString(data, columns);
-            const newFile = new File([csvString], filename, { type: 'text/csv' });
-            setSelectedFile(newFile);
-        } else if (!filename && selectedFile) {
-            // Redux was cleared external to this hook
+        const restore = async () => {
+            if (filename && columns.length > 0) {
+                try {
+                    const rawCsv = await csvStorage.getItem(CSV_RAW_KEY);
+                    if (rawCsv && !cancelled) {
+                        const file = new File([rawCsv], filename, { type: 'text/csv' });
+                        setSelectedFile(file);
+                    }
+                } catch (err) {
+                    console.warn('Failed to restore CSV from IndexedDB', err);
+                }
+            }
+            if (!cancelled) setIsRestoring(false);
+        };
+
+        restore();
+        return () => { cancelled = true; };
+    }, []); // Only on mount
+
+    // Sync: if Redux is cleared externally, clear local state too
+    useEffect(() => {
+        if (!filename && selectedFile) {
             setSelectedFile(null);
         }
-    }, [data, columns, filename]); // Dependency on Redux state
+    }, [filename]); // eslint-disable-line react-hooks/exhaustive-deps
 
     /**
      * Handles a new file upload from a file input.
-     * Parses the file and updates Redux, which will then trigger the useEffect to update selectedFile.
+     * Parses the file, stores raw text in IndexedDB, and saves metadata to Redux.
      */
-    const handleFileUpload = async (file) => {
+    const handleFileUpload = useCallback(async (file) => {
         if (!file) {
             dispatch(clearCsvData());
             setSelectedFile(null);
+            await csvStorage.removeItem(CSV_RAW_KEY);
             return;
         }
 
         setIsProcessing(true);
         try {
+            // Read raw text for compact IndexedDB storage
+            const rawText = await file.text();
+
+            // Parse for metadata
             const { data: parsedData, columns: parsedColumns } = await parseCsvFile(file);
 
-            dispatch(setCsvData({
-                data: parsedData,
+            // Store raw CSV text in IndexedDB (compact, no JSON overhead)
+            await csvStorage.setItem(CSV_RAW_KEY, rawText);
+
+            // Store only lightweight metadata in Redux (persisted by redux-persist)
+            dispatch(setCsvMeta({
                 columns: parsedColumns,
                 filename: file.name,
+                rowCount: parsedData.length,
                 metadata: {
                     original_rows: parsedData.length,
-                    // We can retain or reset other metadata. For a fresh upload, reset.
-                }
+                },
             }));
-            // selectedFile will be updated by the useEffect
+
+            // Set local File object for API calls
+            setSelectedFile(file);
         } catch (error) {
             console.error("Failed to parse CSV", error);
-            // Optionally handle error state here or let component handle it
         } finally {
             setIsProcessing(false);
         }
-    };
+    }, [dispatch]);
 
     /**
      * Updates the global state with new data (e.g. after cleaning).
+     * Rebuilds the raw CSV and stores it in IndexedDB.
      */
-    const updateGlobalCsv = (newData, newColumns, newFilename, newMetadata) => {
-        dispatch(setCsvData({
-            data: newData,
-            columns: newColumns,
-            filename: newFilename || filename,
-            metadata: newMetadata || metadata
-        }));
-    };
+    const updateGlobalCsv = useCallback(async (newData, newColumns, newFilename, newMetadata) => {
+        try {
+            const csvString = jsonToCsvString(newData, newColumns);
+            await csvStorage.setItem(CSV_RAW_KEY, csvString);
 
-    const clearGlobalCsv = () => {
+            dispatch(setCsvMeta({
+                columns: newColumns,
+                filename: newFilename || filename,
+                rowCount: newData.length,
+                metadata: newMetadata || metadata,
+            }));
+
+            // Rebuild the File object
+            const newFile = new File([csvString], newFilename || filename, { type: 'text/csv' });
+            setSelectedFile(newFile);
+        } catch (error) {
+            console.error("Failed to update CSV", error);
+        }
+    }, [dispatch, filename, metadata]);
+
+    const clearGlobalCsv = useCallback(async () => {
         dispatch(clearCsvData());
-    }
+        setSelectedFile(null);
+        await csvStorage.removeItem(CSV_RAW_KEY);
+    }, [dispatch]);
 
     return {
         selectedFile,      // The File object (ready for FormData APIs)
-        csvData: data,     // JSON data
+        csvData: [],       // No longer stored in Redux — use selectedFile for API calls
         csvColumns: columns,
         csvFilename: filename,
         csvMetadata: metadata,
-        handleFileUpload,  // Call this with the file from <input type="file" />
-        updateGlobalCsv,   // Call this after cleaning
+        csvRowCount: rowCount,
+        handleFileUpload,
+        updateGlobalCsv,
         clearGlobalCsv,
-        isProcessing
+        isProcessing,
+        isRestoring,       // True while restoring from IndexedDB on page load
     };
 };

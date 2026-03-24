@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { Textarea } from "../ui/textarea";
 import { cn } from "../../lib/utils";
-import { ArrowUpIcon, Paperclip, Bot, Square } from "lucide-react";
+import { ArrowUpIcon, Bot, Square } from "lucide-react";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -90,12 +90,11 @@ function ChatMessage({ message }) {
     );
 }
 
-// localStorage helpers
+// localStorage helpers for chat messages only
 const STORAGE_KEYS = {
     MESSAGES: "csvChat_messages",
     SESSION_ID: "csvChat_sessionId",
     CSV_INFO: "csvChat_csvInfo",
-    FILE_NAME: "csvChat_fileName",
 };
 
 function loadFromStorage(key, fallback = null) {
@@ -117,7 +116,11 @@ function clearChatStorage() {
     Object.values(STORAGE_KEYS).forEach((k) => localStorage.removeItem(k));
 }
 
-export function CsvChatbot({ uploadedFile }) {
+/**
+ * CsvChatbot now receives the file from the shared Redux state via props.
+ * It no longer has its own upload UI — the CSV is uploaded on the Home page.
+ */
+export function CsvChatbot({ sharedFile }) {
     const [value, setValue] = useState("");
     const [messages, setMessages] = useState(
         () => loadFromStorage(STORAGE_KEYS.MESSAGES, [])
@@ -126,14 +129,7 @@ export function CsvChatbot({ uploadedFile }) {
     const [isUploading, setIsUploading] = useState(false);
     const [, setError] = useState(null);
     const messagesEndRef = useRef(null);
-    const fileInputRef = useRef(null);
     const abortControllerRef = useRef(null);
-
-    // For localFile we store a lightweight { name } object when restoring from storage
-    const storedFileName = loadFromStorage(STORAGE_KEYS.FILE_NAME);
-    const [localFile, setLocalFile] = useState(
-        uploadedFile || (storedFileName ? { name: storedFileName } : null)
-    );
 
     // Session state
     const [sessionId, setSessionId] = useState(
@@ -143,20 +139,22 @@ export function CsvChatbot({ uploadedFile }) {
         () => loadFromStorage(STORAGE_KEYS.CSV_INFO)
     );
 
+    // Track which file the current session belongs to
+    const [sessionFileName, setSessionFileName] = useState(
+        () => loadFromStorage("csvChat_sessionFileName")
+    );
+
     // ── Persist state changes to localStorage ──
     useEffect(() => { saveToStorage(STORAGE_KEYS.MESSAGES, messages); }, [messages]);
     useEffect(() => { saveToStorage(STORAGE_KEYS.SESSION_ID, sessionId); }, [sessionId]);
     useEffect(() => { saveToStorage(STORAGE_KEYS.CSV_INFO, csvInfo); }, [csvInfo]);
-    useEffect(() => {
-        saveToStorage(STORAGE_KEYS.FILE_NAME, localFile?.name || null);
-    }, [localFile]);
+    useEffect(() => { saveToStorage("csvChat_sessionFileName", sessionFileName); }, [sessionFileName]);
 
     const { textareaRef, adjustHeight } = useAutoResizeTextarea({
         minHeight: 60,
         maxHeight: 200,
     });
 
-    const hasFile = !!localFile;
     const hasSession = !!sessionId;
 
     // Auto-scroll to newest message
@@ -187,6 +185,7 @@ export function CsvChatbot({ uploadedFile }) {
             const { session_id, columns, row_count, models_used } = response.data;
             setSessionId(session_id);
             setCsvInfo({ columns, row_count, models_used });
+            setSessionFileName(file.name);
         } catch (err) {
             const detail = err?.response?.data?.detail || err.message || "Upload failed.";
             setError(detail);
@@ -196,25 +195,14 @@ export function CsvChatbot({ uploadedFile }) {
         }
     }, []);
 
-    // Trigger upload when file is selected
-    const handleFileChange = (e) => {
-        const file = e.target.files[0];
-        if (file && file.name.endsWith(".csv")) {
-            setLocalFile(file);
-            uploadCSV(file);
-        } else {
-            setError("Please select a valid .csv file.");
-        }
-    };
-
-    // Also upload if an external file prop is provided
+    // Auto-upload when a shared file arrives — always re-create session to ensure
+    // the backend has the full dataset (backend sessions are in-memory, don't survive restarts)
     useEffect(() => {
-        if (uploadedFile) {
-            setLocalFile(uploadedFile);
-            uploadCSV(uploadedFile);
+        if (sharedFile) {
+            uploadCSV(sharedFile);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [uploadedFile]);
+    }, [sharedFile]);
 
     const handleStop = () => {
         if (abortControllerRef.current) {
@@ -240,7 +228,6 @@ export function CsvChatbot({ uploadedFile }) {
         abortControllerRef.current = controller;
 
         try {
-            // JSON POST — no file re-upload needed!
             const response = await axios.post(
                 "http://localhost:8000/api/v1/chat/ask",
                 {
@@ -282,16 +269,20 @@ export function CsvChatbot({ uploadedFile }) {
         }
     };
 
-    const handleRemoveFile = () => {
+    const handleNewSession = () => {
         // Clean up the backend session
         if (sessionId) {
             axios.delete(`http://localhost:8000/api/v1/chat/${sessionId}`).catch(() => { });
         }
-        setLocalFile(null);
         setSessionId(null);
         setCsvInfo(null);
         setMessages([]);
+        setSessionFileName(null);
         clearChatStorage();
+        // Re-upload the current shared file
+        if (sharedFile) {
+            uploadCSV(sharedFile);
+        }
     };
 
     return (
@@ -312,150 +303,115 @@ export function CsvChatbot({ uploadedFile }) {
                 </div>
             </div>
 
-            {/* CSV Upload Banner — shown when no file */}
-            {!hasFile && (
-                <div
-                    className="flex-1 flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed border-white/15 bg-white/5 cursor-pointer hover:bg-white/8 transition-all group"
-                    onClick={() => fileInputRef.current?.click()}
-                >
-                    <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept=".csv"
-                        className="hidden"
-                        onChange={handleFileChange}
-                    />
-                    <div className="rounded-full bg-white/10 p-4 group-hover:bg-white/15 transition-all">
-                        <Paperclip className="w-7 h-7 text-white/50" />
-                    </div>
-                    <div className="text-center">
-                        <p className="text-white/80 font-medium">Upload a CSV file to start chatting</p>
-                        <p className="text-white/40 text-sm mt-1">Click here or drag & drop a .csv file</p>
-                    </div>
+            {/* File badge + session info */}
+            {sharedFile && (
+                <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-xl bg-white/5 border border-white/10 w-fit">
+                    <span className="text-xs text-white/60 font-medium truncate max-w-[200px]">📂 {sharedFile.name}</span>
+                    {csvInfo && (
+                        <span className="text-xs text-white/40">
+                            · {csvInfo.row_count} rows · {csvInfo.columns.length} cols
+                        </span>
+                    )}
+                    {isUploading && (
+                        <span className="text-xs text-yellow-400/80 animate-pulse">Initializing…</span>
+                    )}
+                    <button
+                        onClick={handleNewSession}
+                        className="ml-1 text-white/30 hover:text-white/70 transition-colors text-xs"
+                        title="Reset chat session"
+                    >🔄</button>
                 </div>
             )}
 
-            {/* Chat area */}
-            {hasFile && (
-                <>
-                    {/* File badge + session info */}
-                    <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-xl bg-white/5 border border-white/10 w-fit">
-                        <Paperclip className="w-3.5 h-3.5 text-white/50" />
-                        <span className="text-xs text-white/60 font-medium truncate max-w-[200px]">{localFile.name}</span>
-                        {csvInfo && (
-                            <span className="text-xs text-white/40">
-                                · {csvInfo.row_count} rows · {csvInfo.columns.length} cols
-                            </span>
-                        )}
-                        {isUploading && (
-                            <span className="text-xs text-yellow-400/80 animate-pulse">Initializing…</span>
-                        )}
-                        <button
-                            onClick={handleRemoveFile}
-                            className="ml-1 text-white/30 hover:text-white/70 transition-colors text-xs"
-                        >✕</button>
-                    </div>
-
-                    {/* Messages scroll area */}
-                    <div className="flex-1 overflow-y-auto pr-2 mb-3 space-y-4">
-                        {messages.length === 0 && (
-                            <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
-                                <Bot className="w-10 h-10 text-white/20" />
-                                {isUploading ? (
-                                    <p className="text-white/40 text-sm animate-pulse">
-                                        Setting up your session…
-                                    </p>
-                                ) : (
-                                    <>
-                                        <p className="text-white/40 text-sm">
-                                            Ask anything about <span className="text-white/60 font-medium">{localFile.name}</span>
-                                        </p>
-                                        <div className="flex flex-wrap gap-2 justify-center mt-2">
-                                            {["What are the columns?", "Give me a summary", "Any null values?", "Top 5 rows?"].map((q) => (
-                                                <button
-                                                    key={q}
-                                                    onClick={() => { setValue(q); textareaRef.current?.focus(); }}
-                                                    className="px-3 py-1.5 text-xs rounded-full border border-white/10 text-white/50 hover:border-white/30 hover:text-white/80 bg-white/5 transition-all"
-                                                >{q}</button>
-                                            ))}
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-                        )}
-                        {messages.map((msg, i) => <ChatMessage key={i} message={msg} />)}
-                        {isLoading && (
-                            <div className="flex gap-3 mb-4 justify-start">
-                                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-white/10 border border-white/20 flex items-center justify-center">
-                                    <Bot className="w-4 h-4 text-white/70" />
+            {/* Messages scroll area */}
+            <div className="flex-1 overflow-y-auto pr-2 mb-3 space-y-4">
+                {messages.length === 0 && (
+                    <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
+                        <Bot className="w-10 h-10 text-white/20" />
+                        {isUploading ? (
+                            <p className="text-white/40 text-sm animate-pulse">
+                                Setting up your session…
+                            </p>
+                        ) : (
+                            <>
+                                <p className="text-white/40 text-sm">
+                                    Ask anything about <span className="text-white/60 font-medium">{sharedFile?.name}</span>
+                                </p>
+                                <div className="flex flex-wrap gap-2 justify-center mt-2">
+                                    {["What are the columns?", "Give me a summary", "Any null values?", "Top 5 rows?"].map((q) => (
+                                        <button
+                                            key={q}
+                                            onClick={() => { setValue(q); textareaRef.current?.focus(); }}
+                                            className="px-3 py-1.5 text-xs rounded-full border border-white/10 text-white/50 hover:border-white/30 hover:text-white/80 bg-white/5 transition-all"
+                                        >{q}</button>
+                                    ))}
                                 </div>
-                                <div className="bg-white/10 border border-white/10 rounded-2xl rounded-bl-sm backdrop-blur-sm px-4 py-3">
-                                    <div className="flex gap-1 items-center h-5">
-                                        <span className="w-1.5 h-1.5 bg-white/50 rounded-full animate-bounce [animation-delay:-0.3s]" />
-                                        <span className="w-1.5 h-1.5 bg-white/50 rounded-full animate-bounce [animation-delay:-0.15s]" />
-                                        <span className="w-1.5 h-1.5 bg-white/50 rounded-full animate-bounce" />
-                                    </div>
-                                </div>
-                            </div>
+                            </>
                         )}
-                        <div ref={messagesEndRef} />
                     </div>
-
-                    {/* Input box */}
-                    <div className="relative rounded-2xl border border-white/15 bg-white/5 backdrop-blur-sm">
-                        <Textarea
-                            ref={textareaRef}
-                            value={value}
-                            onChange={(e) => { setValue(e.target.value); adjustHeight(); }}
-                            onKeyDown={handleKeyDown}
-                            placeholder={hasSession ? "Ask a question about your data..." : "Waiting for session to initialize..."}
-                            disabled={isLoading || !hasSession}
-                            className={cn(
-                                "w-full px-4 py-3 resize-none bg-transparent border-none text-white text-sm",
-                                "focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0",
-                                "placeholder:text-white/30 min-h-[60px]",
-                                (isLoading || !hasSession) && "opacity-50 cursor-not-allowed"
-                            )}
-                            style={{ overflow: "hidden" }}
-                        />
-                        <div className="flex items-center justify-between px-3 pb-3">
-                            <button
-                                type="button"
-                                onClick={() => fileInputRef.current?.click()}
-                                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-white/40 hover:text-white/70 hover:bg-white/10 transition-all text-xs"
-                            >
-                                <Paperclip className="w-3.5 h-3.5" />
-                                Change CSV
-                            </button>
-                            <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleFileChange} />
-                            {isLoading ? (
-                                <button
-                                    type="button"
-                                    onClick={handleStop}
-                                    className="p-2 rounded-xl border border-red-500/50 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:border-red-400 transition-all"
-                                    title="Stop generation"
-                                >
-                                    <Square className="w-4 h-4 fill-current" />
-                                </button>
-                            ) : (
-                                <button
-                                    type="button"
-                                    onClick={handleSend}
-                                    disabled={!value.trim() || !hasSession}
-                                    className={cn(
-                                        "p-2 rounded-xl border transition-all",
-                                        value.trim() && hasSession
-                                            ? "bg-white text-black border-transparent hover:bg-white/90"
-                                            : "bg-transparent text-white/20 border-white/10 cursor-not-allowed"
-                                    )}
-                                >
-                                    <ArrowUpIcon className="w-4 h-4" />
-                                </button>
-                            )}
+                )}
+                {messages.map((msg, i) => <ChatMessage key={i} message={msg} />)}
+                {isLoading && (
+                    <div className="flex gap-3 mb-4 justify-start">
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-white/10 border border-white/20 flex items-center justify-center">
+                            <Bot className="w-4 h-4 text-white/70" />
+                        </div>
+                        <div className="bg-white/10 border border-white/10 rounded-2xl rounded-bl-sm backdrop-blur-sm px-4 py-3">
+                            <div className="flex gap-1 items-center h-5">
+                                <span className="w-1.5 h-1.5 bg-white/50 rounded-full animate-bounce [animation-delay:-0.3s]" />
+                                <span className="w-1.5 h-1.5 bg-white/50 rounded-full animate-bounce [animation-delay:-0.15s]" />
+                                <span className="w-1.5 h-1.5 bg-white/50 rounded-full animate-bounce" />
+                            </div>
                         </div>
                     </div>
-                </>
-            )}
+                )}
+                <div ref={messagesEndRef} />
+            </div>
+
+            {/* Input box */}
+            <div className="relative rounded-2xl border border-white/15 bg-white/5 backdrop-blur-sm">
+                <Textarea
+                    ref={textareaRef}
+                    value={value}
+                    onChange={(e) => { setValue(e.target.value); adjustHeight(); }}
+                    onKeyDown={handleKeyDown}
+                    placeholder={hasSession ? "Ask a question about your data..." : "Waiting for session to initialize..."}
+                    disabled={isLoading || !hasSession}
+                    className={cn(
+                        "w-full px-4 py-3 resize-none bg-transparent border-none text-white text-sm",
+                        "focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0",
+                        "placeholder:text-white/30 min-h-[60px]",
+                        (isLoading || !hasSession) && "opacity-50 cursor-not-allowed"
+                    )}
+                    style={{ overflow: "hidden" }}
+                />
+                <div className="flex items-center justify-end px-3 pb-3">
+                    {isLoading ? (
+                        <button
+                            type="button"
+                            onClick={handleStop}
+                            className="p-2 rounded-xl border border-red-500/50 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:border-red-400 transition-all"
+                            title="Stop generation"
+                        >
+                            <Square className="w-4 h-4 fill-current" />
+                        </button>
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={handleSend}
+                            disabled={!value.trim() || !hasSession}
+                            className={cn(
+                                "p-2 rounded-xl border transition-all",
+                                value.trim() && hasSession
+                                    ? "bg-white text-black border-transparent hover:bg-white/90"
+                                    : "bg-transparent text-white/20 border-white/10 cursor-not-allowed"
+                            )}
+                        >
+                            <ArrowUpIcon className="w-4 h-4" />
+                        </button>
+                    )}
+                </div>
+            </div>
         </div>
     );
 }

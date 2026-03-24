@@ -1,64 +1,55 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { CorrelationMatrix } from '../components/charts';
 import { useCsvSelection } from '../hooks/useCsvSelection';
 import { GlowingCard } from '../components/ui/glowing-card';
+import { Upload } from 'lucide-react';
 
 export default function CsvAnalysis() {
     const navigate = useNavigate();
 
     // Global CSV State
-    const {
-        selectedFile,
-        handleFileUpload,
-        clearGlobalCsv
-    } = useCsvSelection();
+    const { selectedFile } = useCsvSelection();
 
     // State to store the metadata and preview data from the backend
     const [csvAnalysisResult, setCsvAnalysisResult] = useState(null);
-    // State for error/success messages
     const [message, setMessage] = useState('');
-    const [isError, setIsError] = useState(false); // To determine message color
+    const [isError, setIsError] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
 
-    // Effect to force update file input when selectedFile changes programmatically
+    // Auto-fetch insights on mount (Moved above early return to satisfy Rules of Hooks)
     React.useEffect(() => {
-        if (!selectedFile) {
-            const fileInput = document.getElementById('csvFile');
-            if (fileInput) fileInput.value = '';
-            setCsvAnalysisResult(null);
-            setMessage('');
-        } else {
-            // If a file is pre-loaded (e.g. from Redux), we might want to automatically analyse it?
-            // Or just show it's ready.
-            if (!csvAnalysisResult) {
-                setMessage(`File loaded: ${selectedFile.name}. Click 'Get File Info' to process.`);
-            }
+        if (selectedFile && !csvAnalysisResult && !isLoading && !isError) {
+            handleSubmit(new Event('submit'));
         }
-    }, [selectedFile, csvAnalysisResult]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedFile, csvAnalysisResult, isError]); // removed isLoading from deps so it doesn't trigger repeatedly
 
-    // Function to handle file selection
-    const handleFileChange = (event) => {
-        const file = event.target.files[0];
-        // Use hook to update global state
-        handleFileUpload(file);
+    // Guard: no CSV uploaded
+    if (!selectedFile) {
+        return (
+            <div className="min-h-screen bg-transparent flex flex-col items-center justify-center p-4 pt-24 text-foreground">
+                <div className="bg-card p-10 rounded-xl shadow-2xl max-w-md text-center border border-border/40">
+                    <div className="mx-auto w-16 h-16 rounded-full bg-muted/30 flex items-center justify-center mb-6">
+                        <Upload className="w-8 h-8 text-muted-foreground" />
+                    </div>
+                    <h2 className="text-2xl font-bold text-foreground mb-3">No CSV Uploaded</h2>
+                    <p className="text-muted-foreground mb-6">
+                        Please upload a CSV file on the Home page first to start analyzing your data.
+                    </p>
+                    <Link
+                        to="/"
+                        className="inline-flex items-center justify-center py-3 px-6 rounded-lg text-lg font-semibold text-black bg-white hover:bg-gray-200 transition duration-300"
+                    >
+                        Go to Home Page
+                    </Link>
+                </div>
+            </div>
+        );
+    }
 
-        setMessage(''); // Clear previous messages
-        setIsError(false);
-        setCsvAnalysisResult(null); // Clear previous metadata/preview
-
-        if (file) {
-            if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
-                // Hook handles the setting, just update UI message
-            } else {
-                setMessage('Error: Please select a valid CSV file (.csv extension).');
-                setIsError(true);
-            }
-        }
-    };
-
-    // Function to handle form submission (now just for getting file info)
+    // Function to handle form submission
     const handleSubmit = async (event) => {
         event.preventDefault();
         setMessage('');
@@ -66,26 +57,10 @@ export default function CsvAnalysis() {
         setCsvAnalysisResult(null);
         setIsLoading(true);
 
-        if (!selectedFile) {
-            setMessage('Error: Please select a CSV file.');
-            setIsError(true);
-            setIsLoading(false);
-            return;
-        }
-
-        // Ensure it's a CSV file before sending
-        if (selectedFile.type !== 'text/csv' && !selectedFile.name.endsWith('.csv')) {
-            setMessage('Error: Only CSV files are allowed.');
-            setIsError(true);
-            setIsLoading(false);
-            return;
-        }
-
         const formData = new FormData();
         formData.append('file', selectedFile);
 
         try {
-            // Using axios to send request to FastAPI backend using the versioned API endpoint
             const response = await axios.post('http://localhost:8000/api/v1/csv/analyse-csv/', formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
@@ -94,7 +69,6 @@ export default function CsvAnalysis() {
 
             const data = response.data;
 
-            // Use the comprehensive data structure from our enhanced backend
             const transformedData = {
                 filename: data.filename,
                 file_size: data.file_size,
@@ -102,9 +76,9 @@ export default function CsvAnalysis() {
                 num_rows: data.num_rows,
                 num_columns: data.num_columns,
                 columns: data.columns,
-                preview_data: data.preview_data, // Enhanced preview data
-                basic_preview: data.data, // Basic preview (for backward compatibility)
-                columns_info: data.columns_info, // Detailed column information
+                preview_data: data.preview_data,
+                basic_preview: data.data,
+                columns_info: data.columns_info,
                 data_quality: data.data_quality,
                 column_types: data.column_types,
                 insights: data.insights,
@@ -114,21 +88,17 @@ export default function CsvAnalysis() {
             setCsvAnalysisResult(transformedData);
             setMessage('CSV file information retrieved successfully!');
             setIsError(false);
-            console.log('CSV Info response:', data);
         } catch (error) {
             const errorMessage = error.response?.data?.detail || error.message || 'An unknown error occurred.';
             setMessage('Error: ' + errorMessage);
             setIsError(true);
             setCsvAnalysisResult(null);
-            console.error('CSV Info error:', error);
         } finally {
             setIsLoading(false);
         }
     };
 
-    // Function to reset all states
     const handleReset = () => {
-        clearGlobalCsv();
         setCsvAnalysisResult(null);
         setMessage('');
         setIsError(false);
@@ -139,100 +109,33 @@ export default function CsvAnalysis() {
         <div className="min-h-screen bg-transparent flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8 pt-24 text-foreground">
             <div className="bg-card p-6 sm:p-8 rounded-xl shadow-2xl w-full max-w-6xl border border-border/40">
                 <h1 className="text-3xl sm:text-4xl font-extrabold text-center text-foreground mb-6 sm:mb-8">
-                    CSV File Analyzer
+                    Deep Insights
                 </h1>
                 <p className="text-base sm:text-lg text-center text-muted-foreground mb-8 sm:mb-10">
-                    Upload your CSV file to view its structure and basic statistics.
+                    Auto-analyzing the structure and statistics of your dataset.
                 </p>
 
-                <form onSubmit={handleSubmit} className="space-y-6 sm:space-y-8">
-                    {/* CSV File Upload Section */}
-                    {!csvAnalysisResult && (
-                        <div className="p-5 sm:p-6 border border-border/40 rounded-lg bg-muted/20 shadow-sm">
-                            <h2 className="text-xl sm:text-2xl font-semibold text-foreground mb-4">Upload Your CSV File</h2>
-                            <label htmlFor="csvFile" className="block text-base sm:text-lg font-medium text-muted-foreground mb-2">
-                                Select a CSV File:
-                            </label>
-                            <input
-                                type="file"
-                                id="csvFile"
-                                accept=".csv"
-                                onChange={handleFileChange}
-                                className="block w-full text-sm text-foreground
-                                       file:mr-4 file:py-2 file:px-4
-                                       file:rounded-full file:border-0
-                                       file:text-sm file:font-semibold
-                                       file:bg-foreground file:text-background
-                                       hover:file:bg-foreground/90 cursor-pointer transition duration-200"
-                            />
-                            {selectedFile && (
-                                <p className="mt-3 text-sm text-muted-foreground">
-                                    File selected: <span className="font-medium text-foreground">{selectedFile.name}</span>
-                                </p>
-                            )}
-                        </div>
-                    )}
-
-                    {/* Pre-loaded file indicator */}
-                    {selectedFile && (
-                        <div className="p-4 bg-muted/30 border border-border rounded-lg flex items-center justify-between">
-                            <div className="flex items-center">
-                                <span className="text-2xl mr-3 text-foreground">📂</span>
-                                <div>
-                                    <p className="font-semibold text-foreground">Analysis Data Loaded</p>
-                                    <p className="text-muted-foreground text-sm">{selectedFile.name}</p>
-                                </div>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={handleReset}
-                                className="text-sm bg-background border border-border text-foreground px-3 py-1 rounded hover:bg-muted transition-colors"
-                            >
-                                Change File
-                            </button>
-                        </div>
-                    )}
-
-                    {/* Action Buttons */}
-                    {!csvAnalysisResult && (
-                        <div className="flex flex-col sm:flex-row justify-center gap-4">
-                            <button
-                                type="submit"
-                                disabled={isLoading || isError}
-                                className="w-full sm:w-auto flex justify-center items-center py-3 px-6 border border-transparent rounded-lg shadow-md text-lg font-semibold text-black bg-white hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-white transition duration-300 ease-in-out transform hover:scale-105
-                                       disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-600"
-                            >
-                                {isLoading ? (
-                                    <svg className="animate-spin h-6 w-6 mr-3 border-4 border-t-4 border-gray-500 rounded-full" viewBox="0 0 24 24"></svg>
-                                ) : (
-                                    "Get File Info"
-                                )}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleReset}
-                                className="w-full sm:w-auto flex justify-center items-center py-3 px-6 border border-border rounded-lg shadow-md text-lg font-semibold text-foreground bg-transparent hover:bg-muted focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition duration-300 ease-in-out transform hover:scale-105"
-                            >
-                                Reset
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => navigate('/csv-cleaning')}
-                                disabled={!selectedFile}
-                                className="w-full sm:w-auto flex justify-center items-center py-3 px-6 border border-transparent rounded-lg shadow-md text-lg font-semibold text-white bg-gray-800 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition duration-300 ease-in-out transform hover:scale-105
-                                       disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-600"
-                            >
-                                Clean CSV
-                            </button>
-                        </div>
-                    )}
-                </form>
+                {/* Loading State */}
+                {isLoading && (
+                    <div className="flex flex-col items-center justify-center space-y-4 py-12">
+                        <svg className="animate-spin h-10 w-10 text-primary border-4 border-t-transparent border-primary rounded-full" viewBox="0 0 24 24"></svg>
+                        <p className="text-lg font-medium text-muted-foreground animate-pulse">Running full statistical analysis...</p>
+                    </div>
+                )}
 
                 {/* Message / Error Display */}
-                {message && (
-                    <div className={`mt-8 p-4 rounded-lg relative shadow-md border ${isError ? 'bg-destructive/10 border-destructive/20 text-destructive' : 'bg-zinc-100 border-zinc-200 text-zinc-900 dark:bg-zinc-800 dark:border-zinc-700 dark:text-zinc-100'}`} role="alert">
-                        <strong className="font-bold">{isError ? 'Error' : 'Success'}</strong>
-                        <span className="block sm:inline ml-2">{message}</span>
+                {message && !isLoading && (
+                    <div className={`mt-4 p-4 rounded-lg relative shadow-md border ${isError ? 'bg-destructive/10 border-destructive/20 text-destructive' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400'}`} role="alert">
+                        <strong className="font-bold">{isError ? 'Error: ' : ''}</strong>
+                        <span className="block sm:inline ml-1">{message}</span>
+                        {isError && (
+                            <button
+                                onClick={handleReset}
+                                className="mt-4 px-4 py-2 border rounded-lg text-sm font-medium hover:bg-black/5 dark:hover:bg-white/5 transition-colors block mx-auto"
+                            >
+                                Try Again
+                            </button>
+                        )}
                     </div>
                 )}
 

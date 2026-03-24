@@ -2,6 +2,9 @@
 Main FastAPI application
 """
 
+from dotenv import load_dotenv
+load_dotenv()  # Load .env before any settings/config imports
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging

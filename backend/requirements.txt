@@ -16,3 +16,8 @@ statsmodels>=0.14.0
 langchain
 langchain-experimental
 langchain-community
+langgraph
+langchain-core
+httpx
+python-dotenv
+

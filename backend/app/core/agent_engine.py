@@ -32,6 +32,23 @@ logger = logging.getLogger(__name__)
 LOGIC_PREFIX = (
     "You are a strict data-analysis engine. You have access to a pandas DataFrame called `df`. "
     "Answer the user's question by writing and executing Python code.\n\n"
+    "CRITICAL — TOOL USAGE FORMAT:\n"
+    "You have exactly ONE tool: `python_repl_ast`.\n"
+    "You MUST use this EXACT format — no other format is accepted:\n\n"
+    "Action: python_repl_ast\n"
+    "Action Input: <your python code here>\n\n"
+    "Example:\n"
+    "Action: python_repl_ast\n"
+    "Action Input: print(df.describe())\n\n"
+    "⚠️ The Action MUST be literally `python_repl_ast` — never write a description there.\n"
+    "⚠️ Always use `print()` to display results so they appear in the output.\n\n"
+    "DATA ACCESS RULES:\n"
+    "- The preview below shows only a FEW rows. The FULL dataset is loaded in `df`.\n"
+    "- First N rows: `print(df.head(N))`\n"
+    "- Last N rows: `print(df.tail(N))` — do NOT just repeat df.head()!\n"
+    "- Total rows: `print(len(df))`\n"
+    "- Specific range: `print(df.iloc[start:end])`\n"
+    "- ALWAYS execute the code and return the ACTUAL output from the DataFrame.\n\n"
     "OUTPUT RULES:\n"
     "1. Return ONLY raw data, numbers, statistics, column names, or DataFrame output.\n"
     "2. DO NOT add any explanations, opinions, or human-friendly phrasing.\n"
@@ -90,10 +107,17 @@ class CSVChatbot:
             agent_type="zero-shot-react-description",
             allow_dangerous_code=True,
             prefix=LOGIC_PREFIX,
-            number_of_head_rows=5,
+            number_of_head_rows=20,
             max_iterations=settings.AGENT_MAX_ITERATIONS,
             max_execution_time=settings.AGENT_MAX_EXECUTION_TIME,
-            agent_executor_kwargs={"handle_parsing_errors": True},
+            agent_executor_kwargs={
+                "handle_parsing_errors": (
+                    "Wrong format! You must use EXACTLY:\n"
+                    "Action: python_repl_ast\n"
+                    "Action Input: <your python code>\n\n"
+                    "Try again with the correct format."
+                ),
+            },
         )
 
         # ── Stage 2: Summary LLM (Llama 3.2) ──

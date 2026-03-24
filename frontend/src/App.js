@@ -9,6 +9,8 @@ import CsvCleaning from './pages/CsvCleaning';
 import NotFound404 from './pages/NotFound404';
 import RemovedRowsView from './pages/RemovedRowsView';
 import Chat from './pages/Chat';
+import DashboardChat from './pages/DashboardChat';
+import { GoToHomeButton } from './components/ui/GoToHomeButton';
 
 function App() {
   return (
@@ -28,9 +30,11 @@ function App() {
           <Route path="/csv-cleaning" element={<CsvCleaning />} />
           <Route path="/removed-rows" element={<RemovedRowsView />} />
           <Route path="/chat" element={<Chat />} />
+          <Route path="/dashboard" element={<DashboardChat />} />
 
           <Route path="*" element={<NotFound404 />} />
         </Routes>
+        <GoToHomeButton />
       </div>
     </div>
   );

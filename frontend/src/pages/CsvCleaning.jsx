@@ -1,21 +1,16 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
-// import { useDispatch } from 'react-redux'; // Hook handles this
-// import { setCsvData } from '../store/csvSlice'; // Hook handles this
+import { useNavigate, Link } from 'react-router-dom';
 import { DataQualityPieChart, TypeConversionChart, NullDataChart } from '../components/charts';
 import { useCsvSelection } from '../hooks/useCsvSelection';
 import { GlowingCard } from '../components/ui/glowing-card';
+import { Upload } from 'lucide-react';
 
 export default function CsvCleaning() {
     const navigate = useNavigate();
-    // const dispatch = useDispatch(); // Removed in favor of hook
 
     const {
         selectedFile,
-        handleFileUpload,
-        updateGlobalCsv,
-        clearGlobalCsv,
         isProcessing: isParsingCsv
     } = useCsvSelection();
 
@@ -26,39 +21,39 @@ export default function CsvCleaning() {
     const [isLoading, setIsLoading] = useState(false);
     const [isDownloading, setIsDownloading] = useState(false);
 
-    // Debug function - for testing only
-    const debugNavigateToRemovedRows = () => {
-        console.log('Debug navigate to removed rows view');
-        // Create a large sample dataset with 50 rows
-        const sampleRows = [];
-        for (let i = 0; i < 50; i++) {
-            sampleRows.push({
-                row_index: i,
-                data: {
-                    "id": i,
-                    "name": `Test ${i}`,
-                    "email": i % 3 === 0 ? null : `test${i}@example.com`,
-                    "age": i % 2 === 0 ? i + 20 : null,
-                    "city": i % 4 === 0 ? null : `City ${i}`,
-                    "country": "Country " + (i % 10)
-                }
-            });
+    // Auto-clean CSV on mount
+    React.useEffect(() => {
+        if (selectedFile && !cleaningResult && !isLoading && !isError) {
+            handleCleanCsv(new Event('submit'));
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedFile, cleaningResult, isError]);
 
-        navigate('/removed-rows', {
-            state: {
-                removedRowsData: sampleRows,
-                columns: ["id", "name", "email", "age", "city", "country"],
-                filename: "debug_test.csv"
-            }
-        });
-    };
+    // Guard: no CSV uploaded
+    if (!selectedFile) {
+        return (
+            <div className="min-h-screen bg-transparent flex flex-col items-center justify-center p-4 pt-24 text-foreground">
+                <div className="bg-card p-10 rounded-xl shadow-2xl max-w-md text-center border border-border/40">
+                    <div className="mx-auto w-16 h-16 rounded-full bg-muted/30 flex items-center justify-center mb-6">
+                        <Upload className="w-8 h-8 text-muted-foreground" />
+                    </div>
+                    <h2 className="text-2xl font-bold text-foreground mb-3">No CSV Uploaded</h2>
+                    <p className="text-muted-foreground mb-6">
+                        Please upload a CSV file on the Home page first to start cleaning your data.
+                    </p>
+                    <Link
+                        to="/"
+                        className="inline-flex items-center justify-center py-3 px-6 rounded-lg text-lg font-semibold text-black bg-white hover:bg-gray-200 transition duration-300"
+                    >
+                        Go to Home Page
+                    </Link>
+                </div>
+            </div>
+        );
+    }
 
-    // Function to handle file selection
     // Function to handle viewing all removed rows
     const handleViewAllRemovedRows = async () => {
-        console.log('View All Removed Rows clicked');
-
         if (!selectedFile) {
             setMessage('Error: Please select a CSV file first.');
             setIsError(true);
@@ -68,11 +63,9 @@ export default function CsvCleaning() {
         try {
             setIsLoading(true);
 
-            // Create form data with selected file
             const formData = new FormData();
             formData.append('file', selectedFile);
 
-            // Get all removed rows from backend
             const response = await axios.post('http://localhost:8000/api/v1/csv/removed-rows/', formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
@@ -80,9 +73,7 @@ export default function CsvCleaning() {
             });
 
             const data = response.data;
-            console.log('All removed rows data:', data);
 
-            // Navigate to the removed rows view with the data
             navigate('/removed-rows', {
                 state: {
                     removedRowsData: data.removed_rows,
@@ -99,27 +90,7 @@ export default function CsvCleaning() {
         }
     };
 
-    const handleFileChange = (event) => {
-        const file = event.target.files[0];
-        // Use hook to parse and set Redux state. 
-        // Note: selectedFile will update via useEffect in the hook.
-        handleFileUpload(file);
-
-        setMessage('');
-        setIsError(false);
-        setCleaningResult(null);
-
-        if (file) {
-            if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
-                setMessage(`File selected: ${file.name}. Click 'Clean CSV' to remove null values and duplicate rows.`);
-            } else {
-                setMessage('Error: Please select a valid CSV file (.csv extension).');
-                setIsError(true);
-            }
-        }
-    };
-
-    // Function to handle cleaning CSV (removing null rows and duplicates)
+    // Function to handle cleaning CSV
     const handleCleanCsv = async (event) => {
         event.preventDefault();
         setMessage('');
@@ -134,21 +105,11 @@ export default function CsvCleaning() {
             return;
         }
 
-        // Ensure it's a CSV file before sending
-        if (selectedFile.type !== 'text/csv') {
-            setMessage('Error: Only CSV files are allowed.');
-            setIsError(true);
-            setIsLoading(false);
-            return;
-        }
-
         const formData = new FormData();
         formData.append('file', selectedFile);
-        // Add parameter to indicate we want to remove duplicates as well
         formData.append('remove_duplicates', 'true');
 
         try {
-            // Using axios to send request to FastAPI backend for cleaning
             const response = await axios.post('http://localhost:8000/api/v1/csv/clean/remove-nulls/', formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
@@ -156,26 +117,15 @@ export default function CsvCleaning() {
             });
 
             const data = response.data;
-            console.log('CSV Cleaning response data:', data);
 
-            // Update the UI with the result
             setCleaningResult(data);
 
-            // Update the global state with the CLEANED data
-            if (data.cleaned_data && data.columns) {
-                updateGlobalCsv(
-                    data.cleaned_data,
-                    data.columns,
-                    selectedFile.name, // Keep original filename or append 'cleaned'? User said "replace that with the current value"
-                    {
-                        original_rows: data.original_rows,
-                        cleaned_rows: data.cleaned_rows,
-                        rows_removed: data.rows_removed
-                    }
-                );
-            }
+            // NOTE: We do NOT call updateGlobalCsv() here because
+            // data.cleaned_data is only a PREVIEW (limited rows) from the backend.
+            // Overwriting the global CSV with preview data would truncate the file
+            // for all other features. The user can download the full cleaned CSV
+            // via the "Download Processed CSV" button instead.
 
-            // Create appropriate message based on what was cleaned
             let resultMessage = '';
             if (data.null_rows_removed > 0 && data.duplicate_rows_removed > 0) {
                 resultMessage = `Success! Removed ${data.null_rows_removed.toLocaleString()} rows with null values and ${data.duplicate_rows_removed.toLocaleString()} duplicate rows.`;
@@ -188,19 +138,17 @@ export default function CsvCleaning() {
             }
 
             setMessage(resultMessage);
-            console.log('CSV Cleaning response:', data);
         } catch (error) {
             const errorMessage = error.response?.data?.detail || error.message || 'An unknown error occurred.';
             setMessage('Error: ' + errorMessage);
             setIsError(true);
             setCleaningResult(null);
-            console.error('CSV Cleaning error:', error);
         } finally {
             setIsLoading(false);
         }
     };
 
-    // Function to download cleaned CSV (with nulls and duplicates removed)
+    // Function to download cleaned CSV
     const handleDownloadCleanedCsv = async () => {
         if (!selectedFile) {
             setMessage('Error: No CSV file selected for cleaning.');
@@ -212,18 +160,16 @@ export default function CsvCleaning() {
 
         const formData = new FormData();
         formData.append('file', selectedFile);
-        formData.append('remove_duplicates', 'true'); // Add parameter to indicate we want to remove duplicates
+        formData.append('remove_duplicates', 'true');
 
         try {
-            // Using axios to send request to FastAPI backend for downloading cleaned CSV
             const response = await axios.post('http://localhost:8000/api/v1/csv/clean/remove-nulls/download/', formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
                 },
-                responseType: 'blob', // Important for receiving binary data
+                responseType: 'blob',
             });
 
-            // Create a blob URL and trigger download
             const url = window.URL.createObjectURL(new Blob([response.data]));
             const link = document.createElement('a');
             link.href = url;
@@ -232,7 +178,6 @@ export default function CsvCleaning() {
             link.click();
             link.remove();
 
-            // Show different message based on what processing was done
             const hasNumericConversions = cleaningResult?.type_conversions?.numeric_columns?.length > 0;
             const hasAnyProcessing = cleaningResult?.rows_removed > 0 || hasNumericConversions;
 
@@ -243,81 +188,45 @@ export default function CsvCleaning() {
             }
             setIsError(false);
         } catch (error) {
-            const errorMessage = 'Failed to download cleaned CSV file.';
-            setMessage('Error: ' + errorMessage);
+            setMessage('Error: Failed to download cleaned CSV file.');
             setIsError(true);
-            console.error('CSV Download error:', error);
         } finally {
             setIsDownloading(false);
         }
     };
 
-    // Function to navigate to Analysis page
     const handleAnalyzeData = () => {
         navigate('/csv-analysis');
     };
 
-    // Function to reset all states
     const handleReset = () => {
-        clearGlobalCsv();
         setCleaningResult(null);
         setMessage('');
         setIsError(false);
         setIsLoading(false);
-        const fileInput = document.getElementById('csvFileToClean');
-        if (fileInput) fileInput.value = '';
     };
 
     return (
         <div className="min-h-screen bg-transparent flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8 pt-24 text-foreground">
             <div className="bg-card p-6 sm:p-8 rounded-xl shadow-2xl w-full max-w-6xl border border-border/40">
                 <h1 className="text-3xl sm:text-4xl font-extrabold text-center text-foreground mb-6 sm:mb-8">
-                    CSV File Cleaner
+                    Data Cleaning
                 </h1>
                 <p className="text-base sm:text-lg text-center text-muted-foreground mb-8 sm:mb-10">
-                    Upload your CSV file to clean by removing rows with null values and duplicate rows.
+                    Auto-cleaning your dataset by stripping null values and collapsing duplicates.
                 </p>
 
-                <form onSubmit={handleCleanCsv} className="space-y-6 sm:space-y-8">
-                    {/* CSV File Upload Section */}
-                    <div className="p-5 sm:p-6 border border-border/40 rounded-lg bg-muted/20 shadow-sm">
-                        <h2 className="text-xl sm:text-2xl font-semibold text-foreground mb-4">Upload Your CSV File</h2>
-                        <label htmlFor="csvFileToClean" className="block text-base sm:text-lg font-medium text-muted-foreground mb-2">
-                            Select a CSV File:
-                        </label>
-                        <input
-                            type="file"
-                            id="csvFileToClean"
-                            accept=".csv"
-                            onChange={handleFileChange}
-                            className="block w-full text-sm text-foreground
-                                       file:mr-4 file:py-2 file:px-4
-                                       file:rounded-full file:border-0
-                                       file:text-sm file:font-semibold
-                                       file:bg-foreground file:text-background
-                                       hover:file:bg-foreground/90 cursor-pointer transition duration-200"
-                        />
-                        {selectedFile && (
-                            <p className="mt-3 text-sm text-muted-foreground">
-                                File selected: <span className="font-medium text-foreground">{selectedFile.name}</span>
-                            </p>
-                        )}
+                {/* Loading State */}
+                {isLoading && (
+                    <div className="flex flex-col items-center justify-center space-y-4 py-12">
+                        <svg className="animate-spin h-10 w-10 text-primary border-4 border-t-transparent border-primary rounded-full" viewBox="0 0 24 24"></svg>
+                        <p className="text-lg font-medium text-muted-foreground animate-pulse">Running data cleanup operations...</p>
                     </div>
+                )}
 
+                <form onSubmit={handleCleanCsv} className="space-y-6 sm:space-y-8">
                     {/* Action Buttons */}
                     <div className="flex flex-col sm:flex-row justify-center gap-4">
-                        <button
-                            type="submit"
-                            disabled={isLoading || isDownloading || isParsingCsv}
-                            className="w-full sm:w-auto flex justify-center items-center py-3 px-6 border border-transparent rounded-lg shadow-md text-lg font-semibold text-black bg-white hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-white transition duration-300 ease-in-out transform hover:scale-105
-                                       disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-600"
-                        >
-                            {isLoading ? (
-                                <svg className="animate-spin h-6 w-6 mr-3 border-4 border-t-4 border-gray-500 rounded-full" viewBox="0 0 24 24"></svg>
-                            ) : (
-                                "Clean CSV (Remove Nulls & Duplicates)"
-                            )}
-                        </button>
 
                         {cleaningResult && (
                             <button
@@ -427,9 +336,8 @@ export default function CsvCleaning() {
                                                 </div>
                                             </div>
 
-                                            {/* Fallback for when we only have type_changes but not detailed conversion_details */}
-                                            {cleaningResult.type_conversions &&
-                                                cleaningResult.type_conversions.type_changes &&
+                                            {/* Type changes table */}
+                                            {cleaningResult.type_conversions.type_changes &&
                                                 Object.keys(cleaningResult.type_conversions.type_changes).length > 0 &&
                                                 (!cleaningResult.type_conversions.conversion_details ||
                                                     Object.keys(cleaningResult.type_conversions.conversion_details).length === 0) && (
@@ -459,9 +367,7 @@ export default function CsvCleaning() {
                                                 )}
 
                                             {/* Detailed Type Conversion Info */}
-                                            {/* Make the conversion details check more robust */}
-                                            {cleaningResult.type_conversions &&
-                                                cleaningResult.type_conversions.conversion_details &&
+                                            {cleaningResult.type_conversions.conversion_details &&
                                                 typeof cleaningResult.type_conversions.conversion_details === 'object' &&
                                                 Object.keys(cleaningResult.type_conversions.conversion_details).length > 0 && (
                                                     <div className="mt-4 pt-4 border-t border-border/20">
@@ -519,7 +425,7 @@ export default function CsvCleaning() {
                             </div>
                         </div>
 
-                        {/* Removed Rows Section - Show if there were rows removed */}
+                        {/* Removed Rows Section */}
                         {cleaningResult.rows_removed > 0 && (
                             <div className="mb-6">
                                 <h4 className="text-xl font-semibold text-foreground mb-3">
@@ -541,7 +447,7 @@ export default function CsvCleaning() {
                                     </div>
                                 </div>
 
-                                {/* Null Data Column Chart - visualize nulls per column */}
+                                {/* Null Data Column Chart */}
                                 {cleaningResult.null_data && cleaningResult.null_data.null_counts_by_column && (
                                     <div className="mb-6 mt-4">
                                         <h5 className="text-lg font-medium text-muted-foreground mb-3">Null Values by Column</h5>
@@ -577,21 +483,6 @@ export default function CsvCleaning() {
                                                 View All Removed Rows
                                             </>
                                         )}
-                                    </button>
-                                    <button
-                                        className="px-4 py-2 bg-yellow-100 hover:bg-yellow-200 text-yellow-800 rounded-md"
-                                        onClick={() => {
-                                            console.log('Cleaning Result:', cleaningResult);
-                                            console.log('null_data field exists:', Boolean(cleaningResult.null_data));
-                                            if (cleaningResult.null_data) {
-                                                console.log('sample_removed_rows exists:', Boolean(cleaningResult.null_data.sample_removed_rows));
-                                                console.log('sample_removed_rows length:', cleaningResult.null_data.sample_removed_rows?.length);
-                                                console.log('First sample row:', cleaningResult.null_data.sample_removed_rows?.[0]);
-                                            }
-                                            alert(`Rows removed: ${cleaningResult.rows_removed}\nNull data exists: ${Boolean(cleaningResult.null_data)}\nSample rows count: ${cleaningResult.null_data?.sample_removed_rows?.length || 0}`);
-                                        }}
-                                    >
-                                        Debug Data
                                     </button>
                                 </div>
                             </div>
@@ -641,7 +532,6 @@ export default function CsvCleaning() {
                             </p>
                         </div>
                     </GlowingCard>
-
                 )}
             </div>
         </div>

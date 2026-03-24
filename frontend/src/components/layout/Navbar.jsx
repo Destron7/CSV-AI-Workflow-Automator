@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useSelector, useDispatch } from 'react-redux';
+import { clearCsvData } from '../../store/csvSlice';
 import { Button } from "../ui/button";
 import {
     NavigationMenu,
@@ -13,26 +15,29 @@ import {
 } from "../ui/popover";
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from "../../lib/utils";
-import { Menu, Package2 } from "lucide-react";
+import { Menu, Package2, FileSpreadsheet, X } from "lucide-react";
 
 const navigationLinks = [
     { href: "/", label: "Home" },
     { href: "/csv-cleaning", label: "Data Cleaning" },
     { href: "/csv-analysis", label: "Analysis" },
+    { href: "/dashboard", label: "Dashboard" },
     { href: "/chat", label: "Chat" },
 ];
 
 export default function Navbar() {
     const location = useLocation();
+    const dispatch = useDispatch();
     const [isVisible, setIsVisible] = useState(false);
+
+    const csvFilename = useSelector((state) => state.csv.filename);
+    const hasFile = !!csvFilename;
 
     useEffect(() => {
         const handleMouseMove = (e) => {
-            // Show navbar when mouse is within top 20px of screen
             if (e.clientY < 20) {
                 setIsVisible(true);
             }
-            // Hide navbar when mouse moves down (unless hovering the navbar itself, handled by onMouseEnter)
             else if (e.clientY > 100 && !e.target.closest('header')) {
                 setIsVisible(false);
             }
@@ -41,6 +46,14 @@ export default function Navbar() {
         window.addEventListener('mousemove', handleMouseMove);
         return () => window.removeEventListener('mousemove', handleMouseMove);
     }, []);
+
+    const handleClearFile = () => {
+        dispatch(clearCsvData());
+        // Also clear chat localStorage
+        ['csvChat_messages', 'csvChat_sessionId', 'csvChat_csvInfo', 'csvChat_sessionFileName'].forEach(
+            (k) => localStorage.removeItem(k)
+        );
+    };
 
     return (
         <header
@@ -64,7 +77,7 @@ export default function Navbar() {
 
                 {/* Center (Navigation) */}
                 <div className="flex-1 flex justify-center">
-                    {/* Mobile menu trigger (visible only on mobile) */}
+                    {/* Mobile menu trigger */}
                     <div className="md:hidden">
                         <Popover>
                             <PopoverTrigger asChild>
@@ -118,12 +131,22 @@ export default function Navbar() {
                     </NavigationMenu>
                 </div>
 
-                {/* Right side (Action Button) - Removed for now */}
-                {/* <div className="flex items-center gap-2">
-                    <Button asChild size="sm" className="hidden sm:inline-flex bg-white text-black hover:bg-gray-200">
-                        <Link to="/get-started">New Workflow</Link>
-                    </Button>
-                </div> */}
+                {/* Right side — Active CSV Badge */}
+                <div className="flex items-center gap-2">
+                    {hasFile && (
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 border border-white/15 text-xs text-white/70 max-w-[200px]">
+                            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                            <span className="truncate">{csvFilename}</span>
+                            <button
+                                onClick={handleClearFile}
+                                className="ml-0.5 text-white/30 hover:text-white/70 transition-colors flex-shrink-0"
+                                title="Remove CSV"
+                            >
+                                <X className="w-3 h-3" />
+                            </button>
+                        </div>
+                    )}
+                </div>
             </div>
         </header>
     )

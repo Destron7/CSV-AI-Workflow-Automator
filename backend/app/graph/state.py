@@ -35,6 +35,11 @@ class DashboardState(TypedDict):
     # ── Q&A fields ──────────────────────────────────────────────────
     chat_history: list               # list[ChatMessage], grows with every turn
     chat_answer: Optional[str]       # answer to the current question
+    
+    # ── Dynamic chart generation ────────────────────────────────────
+    pending_chart: Optional[dict]    # new chart being built
+    is_chart_request: bool           # True if current question is a chart request
+    is_remove_chart_request: bool    # True if user is asking to remove a chart
 
     # ── error handling ──────────────────────────────────────────────
     error: Optional[str]

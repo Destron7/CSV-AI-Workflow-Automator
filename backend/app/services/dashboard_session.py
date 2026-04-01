@@ -53,5 +53,8 @@ def _blank_state() -> DashboardState:
         "payload": None,
         "chat_history": [],
         "chat_answer": None,
+        "is_chart_request": False,
+        "is_remove_chart_request": False,
+        "pending_chart": None,
         "error": None,
     }

@@ -70,8 +70,13 @@ async def dashboard_chat(
         state["error"] = None
         had_payload = False
 
-    # 5. Set user question
+    # 5. Set user question and clear per-turn fields so stale values
+    #    from the previous invocation don't corrupt routing decisions
     state["user_question"] = question
+    state["chat_answer"] = None          # must be None so cache-check works
+    state["is_chart_request"] = False    # reset chart detection flag
+    state["is_remove_chart_request"] = False # reset chart removal flag
+    state["pending_chart"] = None        # clear any leftover chart spec
 
     # 6. Invoke the graph
     graph = _get_graph()
@@ -93,10 +98,8 @@ async def dashboard_chat(
     if answer.startswith("[cached] "):
         answer = answer[len("[cached] "):]
 
-    # 10. Build response — only include dashboard on first call
-    dashboard = None
-    if not had_payload and result.get("payload"):
-        dashboard = result["payload"]
+    # 10. Build response — always return payload so frontend can update charts dynamically
+    dashboard = result.get("payload")
 
     # Clean chat history for response (remove any internal fields)
     chat_history = result.get("chat_history") or []

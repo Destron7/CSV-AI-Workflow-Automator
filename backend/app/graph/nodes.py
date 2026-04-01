@@ -10,6 +10,7 @@ import json
 import difflib
 import logging
 import math
+import re
 
 import httpx
 import pandas as pd
@@ -468,3 +469,262 @@ def gemini_qa(state: DashboardState) -> dict:
     updated_history.append({"role": "assistant", "content": answer})
 
     return {"chat_history": updated_history, "chat_answer": answer}
+
+
+# ─────────────────────────────────────────────────────────────────────
+# New Nodes: Chart Generation & Removal
+# ─────────────────────────────────────────────────────────────────────
+
+CHART_KEYWORDS = re.compile(
+    r"\b(plot|draw|show|create|add|generate|make|give me)\b.{0,40}"
+    r"\b(chart|graph|plot|line|bar|scatter|histogram|pie|boxplot|heatmap)\b",
+    re.IGNORECASE,
+)
+
+REMOVE_CHART_KEYWORDS = re.compile(
+    r"\b(remove|delete|drop|hide|clear|get rid of)\b.{0,40}"
+    r"\b(chart|graph|plot|line|bar|scatter|histogram|pie|boxplot|heatmap)\b",
+    re.IGNORECASE,
+)
+
+def detect_chart_intent(state: DashboardState) -> dict:
+    """
+    Detect if the user is asking to create a chart or remove a chart.
+    Uses regex first (fast), falls back to Ollama for ambiguous cases.
+    """
+    question = state.get("user_question", "")
+
+    # Fast path — regex match
+    if REMOVE_CHART_KEYWORDS.search(question):
+        logger.info("Chart remove request detected via regex")
+        return {"is_remove_chart_request": True, "is_chart_request": False}
+
+    if CHART_KEYWORDS.search(question):
+        logger.info("Chart request detected via regex")
+        return {"is_chart_request": True, "is_remove_chart_request": False}
+
+    # Slow path — ask the model
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You classify user messages into three categories: CREATE, REMOVE, or NONE. "
+                "Reply with ONLY the word CREATE if the user wants to create, add, or plot a new chart. "
+                "Reply with ONLY the word REMOVE if the user wants to remove, delete, or hide an existing chart. "
+                "Reply with ONLY the word NONE otherwise."
+            ),
+        },
+        {"role": "user", "content": question},
+    ]
+    result = _call_ollama(
+        model=ANALYZE_MODEL,
+        messages=messages,
+        format_schema=None,
+        think=None,
+        timeout=30.0,
+    )
+    resp = result["content"].strip().upper()
+    logger.info(f"Chart intent detected via LLM: {resp}")
+
+    if resp.startswith("CREATE"):
+        return {"is_chart_request": True, "is_remove_chart_request": False}
+    elif resp.startswith("REMOVE"):
+        return {"is_remove_chart_request": True, "is_chart_request": False}
+    else:
+        return {"is_chart_request": False, "is_remove_chart_request": False}
+
+
+REMOVE_CHART_PROMPT = """
+The user wants to remove a chart from the dashboard. Based on their request and the list of current charts below, output ONLY a JSON object with the id of the chart to remove:
+{
+  "id": "chart_1"
+}
+If you cannot determine which chart they mean, return:
+{
+  "id": null
+}
+
+Available charts:
+"""
+
+def remove_chart_from_payload(state: DashboardState) -> dict:
+    """
+    Finds the chart the user asked to remove and removes it from the payload.
+    """
+    charts = state["payload"].get("charts", [])
+    question = state.get("user_question", "")
+    
+    chat_history = list(state.get("chat_history") or [])
+    chat_history.append({"role": "user", "content": question})
+
+    if not charts:
+        answer = "There are no charts on the dashboard to remove."
+        chat_history.append({"role": "assistant", "content": answer})
+        return {
+            "chat_answer": answer,
+            "chat_history": chat_history,
+            "is_remove_chart_request": False
+        }
+
+    chart_info = [{"id": c["id"], "title": c["title"], "type": c["type"]} for c in charts]
+    messages = [
+        {
+            "role": "system",
+            "content": REMOVE_CHART_PROMPT + json.dumps(chart_info, indent=2)
+        },
+        {"role": "user", "content": question},
+    ]
+    
+    result = _call_ollama(
+        model=ANALYZE_MODEL,
+        messages=messages,
+        format_schema={
+            "type": "object",
+            "properties": {"id": {"type": ["string", "null"]}},
+        },
+        think=None,
+        timeout=60.0
+    )
+    
+    spec = json.loads(result["content"])
+    target_id = spec.get("id")
+    
+    if not target_id:
+        answer = "I'm not sure which chart you want to remove. Please specify the title or type clearly."
+        chat_history.append({"role": "assistant", "content": answer})
+        return {
+            "chat_answer": answer,
+            "chat_history": chat_history,
+            "is_remove_chart_request": False
+        }
+        
+    filtered_charts = [c for c in charts if c["id"] != target_id]
+    
+    if len(filtered_charts) == len(charts):
+        answer = "I couldn't find a chart matching that description to remove."
+    else:
+        removed_title = next((c["title"] for c in charts if c["id"] == target_id), target_id)
+        answer = f"Done! I've removed the chart '{removed_title}' from your dashboard."
+        
+    chat_history.append({"role": "assistant", "content": answer})
+    
+    updated_payload = dict(state["payload"])
+    updated_payload["charts"] = filtered_charts
+    
+    logger.info(f"Removed chart {target_id}")
+    return {
+        "payload": updated_payload,
+        "chat_answer": answer,
+        "chat_history": chat_history,
+        "is_remove_chart_request": False
+    }
+
+
+NEW_CHART_PROMPT = """
+The user wants a new chart. Extract the chart specification from their request
+and the available columns listed below.
+
+Return ONLY a valid JSON object with exactly these keys:
+{
+  "type": one of bar | line | pie | scatter | histogram | heatmap | boxplot,
+  "title": short descriptive title string,
+  "xAxis": exact column name from the available columns,
+  "yAxis": exact column name from the available columns,
+  "aggregation": one of sum | mean | median | count | none
+}
+
+If xAxis and yAxis are the same column, set aggregation to "count" and
+set yAxis equal to xAxis.
+Return ONLY the JSON. No explanation, no markdown.
+"""
+
+def build_new_chart(state: DashboardState) -> dict:
+    """
+    Parse user's chart request into a chart spec + run aggregation.
+    """
+    col_names = [c["name"] for c in state["columns"]]
+    messages = [
+        {
+            "role": "system",
+            "content": NEW_CHART_PROMPT
+                + f"\n\nAvailable columns: {json.dumps(col_names)}",
+        },
+        {"role": "user", "content": state["user_question"]},
+    ]
+
+    result = _call_ollama(
+        model=ANALYZE_MODEL,
+        messages=messages,
+        format_schema={
+            "type": "object",
+            "properties": {
+                "type":        {"type": "string"},
+                "title":       {"type": "string"},
+                "xAxis":       {"type": "string"},
+                "yAxis":       {"type": "string"},
+                "aggregation": {"type": "string"},
+            },
+            "required": ["type", "title", "xAxis", "yAxis", "aggregation"],
+        },
+        think=None,
+        timeout=60.0,
+    )
+
+    spec = json.loads(result["content"])
+
+    # Validate columns exist — fall back to first available if not
+    valid_cols = set(state["df"].columns)
+    if spec["xAxis"] not in valid_cols:
+        spec["xAxis"] = col_names[0]
+    if spec["yAxis"] not in valid_cols:
+        spec["yAxis"] = col_names[0]
+
+    # Generate unique id
+    existing_ids = [c["id"] for c in state["payload"]["charts"]]
+    spec["id"] = f"chart_user_{len(existing_ids) + 1}"
+
+    # Run aggregation (same logic as compute_aggregations)
+    df = state["df"]
+    x, y, agg = spec["xAxis"], spec["yAxis"], spec["aggregation"]
+    try:
+        if agg == "count":
+            res = df[x].value_counts().reset_index()
+            res.columns = ["label", "value"]
+        elif agg in ("sum", "mean", "median"):
+            res = df.groupby(x)[y].agg(agg).reset_index()
+            res.columns = ["label", "value"]
+        else:
+            res = df[[x, y]].dropna().rename(columns={x: "label", y: "value"})
+        spec["data"] = _clean_nan(res.to_dict(orient="records"))
+    except Exception as e:
+        logger.warning(f"Aggregation failed for user chart: {e}")
+        spec["data"] = []
+
+    logger.info(f"Built user chart: {spec['id']} ({spec['type']})")
+    return {"pending_chart": spec}
+
+
+def append_chart_to_payload(state: DashboardState) -> dict:
+    """
+    Append pending_chart to payload["charts"] and confirm to user.
+    """
+    new_chart = state["pending_chart"]
+    updated_payload = dict(state["payload"])
+    updated_payload["charts"] = list(state["payload"]["charts"]) + [new_chart]
+
+    answer = (
+        f"Done! I've added a **{new_chart['type']} chart** titled "
+        f"\"{new_chart['title']}\" to your dashboard."
+    )
+
+    updated_history = list(state.get("chat_history") or [])
+    updated_history.append({"role": "user",      "content": state["user_question"]})
+    updated_history.append({"role": "assistant", "content": answer})
+
+    return {
+        "payload":      updated_payload,
+        "chat_answer":  answer,
+        "chat_history": updated_history,
+        "pending_chart": None,
+        "is_chart_request": False,
+    }

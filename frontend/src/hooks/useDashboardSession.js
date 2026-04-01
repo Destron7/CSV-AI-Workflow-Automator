@@ -37,21 +37,29 @@ export function useDashboardSession() {
         setIsLoading(true);
         setError(null);
 
+        // Optimistic update — show user message immediately
+        setChatHistory(prev => [...prev, { role: 'user', content: question }]);
+
         try {
             const result = await sendDashboardMessage(sessionId, question, file);
 
-            // Cache dashboard on first successful call — never overwrite with null
-            if (result.dashboard && !hasDashboard.current) {
+            // Update dashboard payload if backend provides it (e.g. new generated charts)
+            if (result.dashboard) {
                 setDashboard(result.dashboard);
                 hasDashboard.current = true;
             }
 
-            setChatHistory(result.chat_history || []);
+            // Replace with server-authoritative history (includes both user + assistant)
+            if (result.chat_history && result.chat_history.length > 0) {
+                setChatHistory(result.chat_history);
+            }
 
             return result;
         } catch (err) {
             const msg = err?.response?.data?.detail || err?.response?.data?.error || err.message;
             setError(msg);
+            // Remove optimistic user message on failure
+            setChatHistory(prev => prev.filter((_, i) => i !== prev.length - 1));
             throw err;
         } finally {
             setIsLoading(false);

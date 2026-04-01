@@ -19,11 +19,16 @@ from app.graph.nodes import (
     assemble_payload,
     check_chat_cache,
     gemini_qa,
+    detect_chart_intent,
+    remove_chart_from_payload,
+    build_new_chart,
+    append_chart_to_payload,
 )
 from app.graph.edges import (
     route_from_orchestrator,
     route_after_validation,
     route_after_cache_check,
+    route_after_detect,
 )
 
 logger = logging.getLogger(__name__)
@@ -44,6 +49,12 @@ def build_graph():
     builder.add_node("assemble_payload", assemble_payload)
     builder.add_node("check_chat_cache", check_chat_cache)
     builder.add_node("gemini_qa", gemini_qa)
+
+    # Register new chart nodes
+    builder.add_node("detect_chart_intent", detect_chart_intent)
+    builder.add_node("build_new_chart", build_new_chart)
+    builder.add_node("append_chart_to_payload", append_chart_to_payload)
+    builder.add_node("remove_chart_from_payload", remove_chart_from_payload)
 
     # Entry point — orchestrator is a conditional edge from START
     builder.set_conditional_entry_point(route_from_orchestrator, {
@@ -69,9 +80,21 @@ def build_graph():
 
     # Q&A flow
     builder.add_conditional_edges("check_chat_cache", route_after_cache_check, {
-        "gemini_qa": "gemini_qa",
+        "detect_chart_intent": "detect_chart_intent",
         "end": END,
     })
+    
+    builder.add_conditional_edges("detect_chart_intent", route_after_detect, {
+        "build_new_chart": "build_new_chart",
+        "remove_chart_from_payload": "remove_chart_from_payload",
+        "gemini_qa": "gemini_qa",
+    })
+
+    builder.add_edge("build_new_chart", "append_chart_to_payload")
+    builder.add_edge("append_chart_to_payload", END)
+    
+    builder.add_edge("remove_chart_from_payload", END)
+
     builder.add_edge("gemini_qa", END)
 
     compiled = builder.compile()

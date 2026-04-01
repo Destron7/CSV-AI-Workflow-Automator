@@ -34,4 +34,13 @@ def route_after_cache_check(state) -> str:
     if (state.get("chat_answer") or "").startswith("[cached]"):
         logger.info("Using cached answer")
         return "end"
+    return "detect_chart_intent"
+
+
+def route_after_detect(state) -> str:
+    """After detect_chart_intent: go to build_new_chart, remove_chart_from_payload, or regular Q&A."""
+    if state.get("is_remove_chart_request"):
+        return "remove_chart_from_payload"
+    if state.get("is_chart_request"):
+        return "build_new_chart"
     return "gemini_qa"
